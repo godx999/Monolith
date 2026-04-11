@@ -42,7 +42,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       return context.next();
     }
 
-    const post = await apiRes.json<{
+    const post = (await apiRes.json()) as {
       title: string;
       excerpt: string;
       content: string;
@@ -50,7 +50,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       tags: string[];
       createdAt: string;
       updatedAt: string;
-    }>();
+    };
 
     // 获取原始 index.html（用根路径请求静态资源）
     const indexUrl = new URL("/", request.url);
@@ -58,7 +58,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     let html = await assetRes.text();
 
     // 生成摘要（优先用 excerpt，否则从 content 截取）
-    const description = post.excerpt || post.content?.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").slice(0, 160) || "";
+    const description = post.excerpt || (post.content ? post.content.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim().slice(0, 160) : "");
     const siteOrigin = url.origin;
     const articleUrl = `${siteOrigin}/posts/${post.slug}`;
     const ogImage = `${siteOrigin}/og-default.png`;
@@ -105,10 +105,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
     // 注入 canonical URL 和 article 元数据（在 </head> 前插入）
     const extraMeta = [
-      `<link rel="canonical" href="${articleUrl}" />`,
-      `<meta property="og:url" content="${articleUrl}" />`,
-      `<meta property="article:published_time" content="${post.createdAt}" />`,
-      post.updatedAt ? `<meta property="article:modified_time" content="${post.updatedAt}" />` : "",
+      `<link rel="canonical" href="${esc(articleUrl)}" />`,
+      `<meta property="og:url" content="${esc(articleUrl)}" />`,
+      `<meta property="article:published_time" content="${esc(post.createdAt)}" />`,
+      post.updatedAt ? `<meta property="article:modified_time" content="${esc(post.updatedAt)}" />` : "",
       ...(post.tags || []).map((tag) => `<meta property="article:tag" content="${esc(tag)}" />`),
     ]
       .filter(Boolean)

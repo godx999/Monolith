@@ -1,11 +1,22 @@
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { SeoHead } from "@/components/seo-head";
 import { Home, ArrowLeft } from "lucide-react";
 
 export function NotFoundPage() {
+  const [, navigate] = useLocation();
+
+  const handleBack = () => {
+    // 有浏览历史则返回，否则兜底到首页
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      navigate("/");
+    }
+  };
+
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-[24px] py-[80px]">
-      <SeoHead title="404 — 页面未找到" description="您访问的页面不存在，可能已被移除或链接有误。" />
+      <SeoHead title="404 — 页面未找到" description="您访问的页面不存在，可能已被移除或链接有误。" noindex />
 
       {/* 404 数字 */}
       <div className="relative select-none">
@@ -30,7 +41,7 @@ export function NotFoundPage() {
       {/* 操作按钮 */}
       <div className="flex items-center gap-[12px] mt-[8px]">
         <button
-          onClick={() => window.history.back()}
+          onClick={handleBack}
           className="inline-flex items-center gap-[6px] h-[36px] px-[16px] rounded-md text-[13px] font-medium text-muted-foreground bg-accent/30 hover:bg-accent/50 transition-colors duration-200"
         >
           <ArrowLeft className="h-[14px] w-[14px]" />

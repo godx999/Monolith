@@ -13,8 +13,8 @@
 
 请通过以下方式私密联系：
 
-1. **GitHub Security Advisories**：前往 [Security](https://github.com/one-ea/Monolith/security/advisories/new) 页面创建私密报告
-2. **邮件**：发送详细信息至仓库所有者
+1. **GitHub Security Advisories**（推荐）：前往 [Security](https://github.com/one-ea/Monolith/security/advisories/new) 页面创建私密报告
+2. **GitHub 私信**：通过 [@one-ea](https://github.com/one-ea) 个人主页联系
 
 ### 报告内容应包含
 

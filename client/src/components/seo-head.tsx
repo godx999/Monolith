@@ -16,6 +16,7 @@ type SeoProps = {
   tags?: string[];
   siteName?: string;
   breadcrumbs?: BreadcrumbItem[];
+  noindex?: boolean;
 };
 
 const DEFAULT_SITE_NAME = "Monolith";
@@ -40,6 +41,7 @@ export function SeoHead({
   tags,
   siteName = DEFAULT_SITE_NAME,
   breadcrumbs,
+  noindex = false,
 }: SeoProps) {
   const fullTitle = title ? `${title} | ${siteName}` : `${siteName} — ${DEFAULT_DESCRIPTION}`;
   const metaDescription = description || DEFAULT_DESCRIPTION;
@@ -74,6 +76,17 @@ export function SeoHead({
 
     // Meta Description
     setMeta("name", "description", metaDescription);
+
+    // Robots（404 等页面需要 noindex）
+    if (noindex) {
+      setMeta("name", "robots", "noindex, nofollow");
+    } else {
+      // 移除可能残留的 noindex
+      const robotsMeta = document.querySelector('meta[name="robots"]');
+      if (robotsMeta?.getAttribute("content")?.includes("noindex")) {
+        robotsMeta.remove();
+      }
+    }
 
     // Canonical URL
     setLink("canonical", canonicalUrl);
