@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { checkAuth, getToken } from "@/lib/api";
-import { ArrowLeft, HardDrive, Cloud, Globe, Download, Trash2, RefreshCw, Shield, Clock, Upload, Eye, FileUp, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, HardDrive, Cloud, Globe, Download, Trash2, RefreshCw, Shield, Clock, Upload, Eye, FileUp, ChevronDown, ChevronUp, ImageDown, Database } from "lucide-react";
 import { Link } from "wouter";
 
 type R2Backup = { key: string; name: string; size: number; uploaded: string };
@@ -37,6 +37,15 @@ export function AdminBackup() {
   const [webdavExpanded, setWebdavExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [webdavConfig, setWebdavConfig] = useState({ url: "", username: "", password: "", path: "/monolith-backups" });
+
+  // Halo 迁移状态
+  const haloFileRef = useRef<HTMLInputElement>(null);
+  const [haloPreview, setHaloPreview] = useState<{ postCount: number; tagCount: number; categoryCount: number; commentCount: number; postTitles: { title: string; slug: string }[]; tagNames: string[] } | null>(null);
+  const [haloRawData, setHaloRawData] = useState<any>(null);
+  const [haloImporting, setHaloImporting] = useState(false);
+  const [haloMode, setHaloMode] = useState<"merge" | "overwrite">("merge");
+  // 批量外链转本地
+  const [localizing, setLocalizing] = useState(false);
 
   useEffect(() => {
     document.title = "备份管理 | Monolith";
@@ -261,6 +270,142 @@ export function AdminBackup() {
           <div className="flex gap-[12px] text-[10px] text-muted-foreground/25">
             <span>📋 <b>合并</b>：跳过已存在的文章，仅添加新数据</span>
             <span>🔄 <b>覆盖</b>：更新已存在的文章内容</span>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Halo 数据迁移 ─── */}
+      <section className="mb-[20px]">
+        <SectionTitle icon={Database} title="数据迁移" />
+        <div className="rounded-lg border border-border/25 bg-card/15 p-[16px] space-y-[12px]">
+          {/* Halo 导入 */}
+          <div>
+            <div className="flex items-center justify-between mb-[6px]">
+              <div>
+                <p className="text-[13px] text-foreground">从 Halo 博客迁移</p>
+                <p className="text-[11px] text-muted-foreground/35 mt-[1px]">上传 Halo 1.x/2.x 导出的 JSON 文件，自动转换并导入</p>
+              </div>
+              <div className="flex items-center gap-[6px]">
+                <select value={haloMode} onChange={(e) => setHaloMode(e.target.value as "merge" | "overwrite")}
+                  className="h-[28px] rounded-md border border-border/25 bg-background/20 px-[8px] text-[11px] text-muted-foreground outline-none"
+                >
+                  <option value="merge">合并导入</option>
+                  <option value="overwrite">覆盖导入</option>
+                </select>
+                <input type="file" ref={haloFileRef} accept=".json" className="hidden" onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    const text = await file.text();
+                    const data = JSON.parse(text);
+                    setHaloRawData(data);
+                    // 调用预览 API
+                    const res = await fetch("/api/admin/import/halo/preview", {
+                      method: "POST", headers: jsonHeaders, body: text,
+                    });
+                    const result = await res.json();
+                    if (result.success) {
+                      setHaloPreview({ ...result.preview, postTitles: result.postTitles, tagNames: result.tagNames });
+                    } else {
+                      showMsg(result.error || "解析失败", "error");
+                    }
+                  } catch { showMsg("文件解析失败，请确认是有效的 Halo JSON 导出文件", "error"); }
+                  if (haloFileRef.current) haloFileRef.current.value = "";
+                }} />
+                <button onClick={() => haloFileRef.current?.click()} disabled={haloImporting}
+                  className="inline-flex items-center gap-[4px] h-[28px] px-[10px] rounded-md bg-foreground text-background text-[11px] font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                >
+                  <Upload className="h-[10px] w-[10px]" />选择 Halo JSON
+                </button>
+              </div>
+            </div>
+
+            {/* Halo 预览结果 */}
+            {haloPreview && (
+              <div className="mt-[10px] rounded-md border border-border/20 bg-background/10 p-[12px] space-y-[8px]">
+                <div className="grid grid-cols-4 gap-[8px]">
+                  {[
+                    { label: "文章", value: haloPreview.postCount, color: "text-cyan-400" },
+                    { label: "标签", value: haloPreview.tagCount, color: "text-emerald-400" },
+                    { label: "分类", value: haloPreview.categoryCount, color: "text-amber-400" },
+                    { label: "评论", value: haloPreview.commentCount, color: "text-purple-400" },
+                  ].map((s) => (
+                    <div key={s.label} className="text-center">
+                      <div className={`text-[18px] font-bold ${s.color}`}>{s.value}</div>
+                      <div className="text-[10px] text-muted-foreground/30">{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+                {haloPreview.postTitles.length > 0 && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground/30 mb-[4px]">文章列表（前 20 篇）：</p>
+                    <div className="max-h-[120px] overflow-y-auto space-y-[2px]">
+                      {haloPreview.postTitles.map((p, i) => (
+                        <div key={i} className="text-[11px] text-muted-foreground/50 truncate">· {p.title}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {haloPreview.commentCount > 0 && (
+                  <p className="text-[10px] text-amber-400/60">⚠ 评论数据尚不支持迁移，仅导入文章和标签</p>
+                )}
+                <div className="flex justify-end gap-[6px] pt-[4px]">
+                  <button onClick={() => { setHaloPreview(null); setHaloRawData(null); }}
+                    className="h-[28px] px-[10px] rounded-md text-[11px] text-muted-foreground/50 hover:text-foreground border border-border/20 transition-colors"
+                  >取消</button>
+                  <button onClick={async () => {
+                    if (!haloRawData) return;
+                    if (!confirm(`确定导入 ${haloPreview.postCount} 篇文章、${haloPreview.tagCount} 个标签？\n模式: ${haloMode === "merge" ? "合并" : "覆盖"}`)) return;
+                    setHaloImporting(true);
+                    try {
+                      const res = await fetch("/api/admin/import/halo", {
+                        method: "POST", headers: jsonHeaders,
+                        body: JSON.stringify({ data: haloRawData, mode: haloMode }),
+                      });
+                      const result = await res.json();
+                      if (result.success) {
+                        showMsg(`Halo 迁移完成：导入 ${result.imported.posts} 篇文章、${result.imported.tags} 个标签`, "success");
+                        setHaloPreview(null); setHaloRawData(null);
+                      } else showMsg(result.error || "导入失败", "error");
+                    } catch { showMsg("导入请求失败", "error"); }
+                    setHaloImporting(false);
+                  }} disabled={haloImporting}
+                    className="inline-flex items-center gap-[4px] h-[28px] px-[12px] rounded-md bg-cyan-500 text-white text-[11px] font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  >
+                    <Database className="h-[10px] w-[10px]" />{haloImporting ? "导入中..." : "确认导入"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 分割线 */}
+          <div className="border-t border-border/15" />
+
+          {/* 批量外链图片转本地 */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[13px] text-foreground">外链图片转本地</p>
+              <p className="text-[11px] text-muted-foreground/35 mt-[1px]">扫描所有文章，将外链图片下载到 R2/S3 并替换 URL</p>
+            </div>
+            <button onClick={async () => {
+              if (!confirm("确定扫描所有文章并转换外链图片？\n这可能需要较长时间。")) return;
+              setLocalizing(true);
+              try {
+                const res = await fetch("/api/admin/localize-all-images", { method: "POST", headers: authHeaders });
+                const result = await res.json();
+                if (result.totalReplaced > 0) {
+                  showMsg(`已转换 ${result.totalReplaced} 张图片（涉及 ${result.posts.length} 篇文章）${result.totalFailed ? `，${result.totalFailed} 张失败` : ""}`, "success");
+                } else {
+                  showMsg("所有文章均无外链图片", "success");
+                }
+              } catch { showMsg("批量转换失败", "error"); }
+              setLocalizing(false);
+            }} disabled={localizing}
+              className="inline-flex items-center gap-[4px] h-[28px] px-[10px] rounded-md text-[11px] text-muted-foreground border border-border/25 hover:text-foreground hover:border-foreground/20 disabled:opacity-50 transition-colors"
+            >
+              <ImageDown className="h-[10px] w-[10px]" />{localizing ? "扫描中..." : "批量转换"}
+            </button>
           </div>
         </div>
       </section>

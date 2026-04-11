@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useLocation } from "wouter";
-import { fetchPost, createPost, updatePost, uploadImage } from "@/lib/api";
+import { fetchPost, createPost, updatePost, uploadImage, localizePostImages } from "@/lib/api";
 import { renderMarkdown } from "@/lib/markdown";
-import { ArrowLeft, Save, Eye, EyeOff, Upload, Image, ChevronDown, ChevronUp, Bold, Italic, Heading2, Heading3, Link2, Code, Quote, List, ListOrdered, Minus, Maximize2, Minimize2, Table, CheckSquare, FileCode } from "lucide-react";
+import { ArrowLeft, Save, Eye, EyeOff, Upload, Image, ChevronDown, ChevronUp, Bold, Italic, Heading2, Heading3, Link2, Code, Quote, List, ListOrdered, Minus, Maximize2, Minimize2, Table, CheckSquare, FileCode, ImageDown } from "lucide-react";
 import { Link } from "wouter";
 import Editor, { type Monaco } from "@monaco-editor/react";
 import type * as MonacoTypes from "monaco-editor";
@@ -402,6 +402,31 @@ export function AdminEditor() {
           <button onClick={handleSave} disabled={saving} className="inline-flex items-center gap-[4px] h-[30px] px-[12px] rounded-md bg-foreground text-background text-[12px] font-medium hover:opacity-90 disabled:opacity-50 transition-opacity">
             <Save className="h-[11px] w-[11px]" />{saving ? "保存中..." : "保存"}
           </button>
+          {isEdit && (
+            <button
+              onClick={async () => {
+                if (!params.slug) return;
+                try {
+                  // 先保存当前修改，确保后端基于最新内容操作
+                  showMsg("正在保存并转换外链图片...", "success");
+                  await handleSave();
+                  const result = await localizePostImages(params.slug);
+                  if (result.replaced > 0) {
+                    showMsg(`已转换 ${result.replaced} 张图片${result.failed ? `，${result.failed} 张失败` : ""}`, "success");
+                    // 重新加载文章内容到编辑器
+                    const fresh = await fetchPost(params.slug);
+                    if (fresh) updateField("content", fresh.content);
+                  } else {
+                    showMsg(result.message || "未发现外链图片", "success");
+                  }
+                } catch { showMsg("外链转本地失败", "error"); }
+              }}
+              title="将文章中的外链图片下载到本地存储"
+              className="inline-flex items-center gap-[4px] h-[30px] px-[8px] rounded-md text-[12px] text-muted-foreground/50 hover:text-foreground hover:bg-accent/15 transition-colors"
+            >
+              <ImageDown className="h-[12px] w-[12px]" />外链转本地
+            </button>
+          )}
         </div>
       </div>
 

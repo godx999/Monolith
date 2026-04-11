@@ -407,6 +407,150 @@ app.delete("/api/admin/posts/:slug", async (c) => {
   return c.json({ success: true });
 });
 
+// ── 外链图片转本地 ─────────────────────────────
+
+/** 从 Markdown 内容中提取所有外链图片 URL */
+function extractExternalImageUrls(content: string): string[] {
+  const urls = new Set<string>();
+  // Markdown 格式：![alt](url) 或 ![alt](url "title")
+  const mdRegex = /!\[[^\]]*\]\(([^\s"')]+)/g;
+  let match;
+  while ((match = mdRegex.exec(content)) !== null) {
+    const url = match[1].trim();
+    if (url && !url.startsWith("/") && !url.startsWith("data:")) {
+      try { new URL(url); urls.add(url); } catch { /* 非合法 URL 跳过 */ }
+    }
+  }
+  // HTML img 标签：<img src="url">
+  const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
+  while ((match = imgRegex.exec(content)) !== null) {
+    const url = match[1].trim();
+    if (url && !url.startsWith("/") && !url.startsWith("data:")) {
+      try { new URL(url); urls.add(url); } catch { /* 跳过 */ }
+    }
+  }
+  return Array.from(urls);
+}
+
+// 单篇文章：外链图片转本地
+app.post("/api/admin/posts/:slug/localize-images", async (c) => {
+  const slug = c.req.param("slug");
+  const db = c.get("db");
+  const storage = c.get("storage");
+
+  const post = await db.getPostBySlug(slug);
+  if (!post) return c.json({ error: "文章未找到" }, 404);
+
+  const externalUrls = extractExternalImageUrls(post.content);
+  if (externalUrls.length === 0) {
+    return c.json({ replaced: 0, failed: 0, message: "未发现外链图片" });
+  }
+
+  let replaced = 0;
+  let failed = 0;
+  const errors: string[] = [];
+  let content = post.content;
+
+  for (const url of externalUrls) {
+    try {
+      const resp = await fetch(url, { headers: { "User-Agent": "Monolith-Bot/1.0" } });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+      const contentType = resp.headers.get("content-type") || "image/png";
+      const ext = contentType.includes("jpeg") || contentType.includes("jpg") ? "jpg"
+        : contentType.includes("png") ? "png"
+        : contentType.includes("gif") ? "gif"
+        : contentType.includes("webp") ? "webp"
+        : contentType.includes("svg") ? "svg"
+        : "png";
+
+      const key = `uploads/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const arrayBuf = await resp.arrayBuffer();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array(arrayBuf));
+          controller.close();
+        },
+      });
+      await storage.put(key, stream, { contentType });
+
+      const localUrl = `/cdn/${key}`;
+      // 全局替换该 URL（Markdown 和 HTML 中都替换）
+      content = content.split(url).join(localUrl);
+      replaced++;
+    } catch (err) {
+      failed++;
+      errors.push(`${url}: ${err instanceof Error ? err.message : "未知错误"}`);
+    }
+  }
+
+  // 只在有替换时更新文章
+  if (replaced > 0) {
+    await db.updatePost(slug, { content });
+  }
+
+  return c.json({ replaced, failed, total: externalUrls.length, errors });
+});
+
+// 批量：所有文章外链图片转本地
+app.post("/api/admin/localize-all-images", async (c) => {
+  const db = c.get("db");
+  const storage = c.get("storage");
+  const allPosts = await db.getAllPosts();
+
+  let totalReplaced = 0;
+  let totalFailed = 0;
+  const results: { slug: string; title: string; replaced: number; failed: number }[] = [];
+
+  for (const post of allPosts) {
+    const externalUrls = extractExternalImageUrls(post.content);
+    if (externalUrls.length === 0) continue;
+
+    let replaced = 0;
+    let failed = 0;
+    let content = post.content;
+
+    for (const url of externalUrls) {
+      try {
+        const resp = await fetch(url, { headers: { "User-Agent": "Monolith-Bot/1.0" } });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+        const contentType = resp.headers.get("content-type") || "image/png";
+        const ext = contentType.includes("jpeg") || contentType.includes("jpg") ? "jpg"
+          : contentType.includes("png") ? "png"
+          : contentType.includes("gif") ? "gif"
+          : contentType.includes("webp") ? "webp"
+          : contentType.includes("svg") ? "svg"
+          : "png";
+
+        const key = `uploads/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const arrayBuf = await resp.arrayBuffer();
+        const stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(new Uint8Array(arrayBuf));
+            controller.close();
+          },
+        });
+        await storage.put(key, stream, { contentType });
+        content = content.split(url).join(`/cdn/${key}`);
+        replaced++;
+      } catch {
+        failed++;
+      }
+    }
+
+    if (replaced > 0) {
+      await db.updatePost(post.slug, { content });
+    }
+
+    totalReplaced += replaced;
+    totalFailed += failed;
+    results.push({ slug: post.slug, title: post.title, replaced, failed });
+  }
+
+  return c.json({ totalReplaced, totalFailed, posts: results });
+});
+
 // 上传图片
 app.post("/api/admin/upload", async (c) => {
   const formData = await c.req.formData();
@@ -672,7 +816,138 @@ app.post("/api/admin/backup/webdav", async (c) => {
   }
 });
 
+// ── Halo 博客数据导入 ─────────────────────────
+
+/** 将 Halo 导出的 JSON 数据转换为 Monolith 的导入格式 */
+function convertHaloData(haloData: any): {
+  posts: any[];
+  tags: { name: string }[];
+  preview: { postCount: number; tagCount: number; categoryCount: number; commentCount: number };
+} {
+  // 构建 tag ID → name 映射
+  const tagMap = new Map<number, string>();
+  const tags: { name: string }[] = [];
+  if (Array.isArray(haloData.tags)) {
+    for (const t of haloData.tags) {
+      tagMap.set(t.id, t.name);
+      tags.push({ name: t.name });
+    }
+  }
+
+  // 构建 category ID → name 映射（分类也作为标签导入）
+  const catMap = new Map<number, string>();
+  if (Array.isArray(haloData.categories)) {
+    for (const c of haloData.categories) {
+      catMap.set(c.id, c.name);
+      if (!tags.find((t) => t.name === c.name)) {
+        tags.push({ name: c.name });
+      }
+    }
+  }
+
+  // 构建 postId → tag names 映射
+  const postTagNames = new Map<number, string[]>();
+  if (Array.isArray(haloData.post_tags)) {
+    for (const pt of haloData.post_tags) {
+      const name = tagMap.get(pt.tagId);
+      if (name) {
+        if (!postTagNames.has(pt.postId)) postTagNames.set(pt.postId, []);
+        postTagNames.get(pt.postId)!.push(name);
+      }
+    }
+  }
+  // 分类也关联到文章标签
+  if (Array.isArray(haloData.post_categories)) {
+    for (const pc of haloData.post_categories) {
+      const name = catMap.get(pc.categoryId);
+      if (name) {
+        if (!postTagNames.has(pc.postId)) postTagNames.set(pc.postId, []);
+        const arr = postTagNames.get(pc.postId)!;
+        if (!arr.includes(name)) arr.push(name);
+      }
+    }
+  }
+
+  // 转换文章
+  const posts: any[] = [];
+  if (Array.isArray(haloData.posts)) {
+    for (const p of haloData.posts) {
+      // Halo 1.x 用 originalContent（Markdown），2.x 可能用 content.raw
+      const content = p.originalContent || p.content?.raw || p.formatContent || "";
+      const excerpt = p.summary || p.excerpt || "";
+      const slug = p.slug || `post-${p.id}`;
+      const title = p.title || "无标题";
+
+      // 状态映射（Halo 1.x: 0=PUBLISHED, 1=DRAFT, 2=RECYCLE）
+      const status = p.status;
+      const published = status === "PUBLISHED" || status === "published" || status === 0 || status === "0";
+      const pinned = Number(p.topPriority || p.priority || 0) > 0;
+
+      posts.push({
+        slug,
+        title,
+        content,
+        excerpt,
+        published,
+        pinned,
+        listed: true,
+        tags: postTagNames.get(p.id) || [],
+      });
+    }
+  }
+
+  return {
+    posts,
+    tags,
+    preview: {
+      postCount: posts.length,
+      tagCount: tags.length,
+      categoryCount: catMap.size,
+      commentCount: Array.isArray(haloData.comments) ? haloData.comments.length : 0,
+    },
+  };
+}
+
+// 预览 Halo 导入数据（不写入）
+app.post("/api/admin/import/halo/preview", async (c) => {
+  try {
+    const haloData = await c.req.json();
+    const result = convertHaloData(haloData);
+    return c.json({
+      success: true,
+      preview: result.preview,
+      postTitles: result.posts.slice(0, 20).map((p: any) => ({ title: p.title, slug: p.slug })),
+      tagNames: result.tags.map((t) => t.name),
+    });
+  } catch (err) {
+    return c.json({ error: `解析 Halo 数据失败: ${err instanceof Error ? err.message : "格式错误"}` }, 400);
+  }
+});
+
+// 正式导入 Halo 数据
+app.post("/api/admin/import/halo", async (c) => {
+  try {
+    const body = await c.req.json();
+    const haloData = body.data || body;
+    const mode = body.mode || "merge";
+    const db = c.get("db");
+
+    const { posts, tags } = convertHaloData(haloData);
+
+    const imported = await db.importAll({
+      posts,
+      tags,
+      mode,
+    });
+
+    return c.json({ success: true, imported, mode });
+  } catch (err) {
+    return c.json({ error: `导入失败: ${err instanceof Error ? err.message : "未知错误"}` }, 500);
+  }
+});
+
 /* ── 独立页 API ─────────────────────────────── */
+
 
 // 公开：获取已发布的独立页列表（导航用）
 app.get("/api/pages", async (c) => {

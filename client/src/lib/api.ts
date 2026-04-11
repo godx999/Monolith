@@ -245,3 +245,64 @@ export async function deleteMedia(key: string): Promise<void> {
   });
   if (!res.ok) throw new Error("删除失败");
 }
+
+/* ── 外链图片转本地 ────────────────────────── */
+export type LocalizeResult = {
+  replaced: number;
+  failed: number;
+  total: number;
+  errors?: string[];
+  message?: string;
+};
+
+export type LocalizeAllResult = {
+  totalReplaced: number;
+  totalFailed: number;
+  posts: { slug: string; title: string; replaced: number; failed: number }[];
+};
+
+export async function localizePostImages(slug: string): Promise<LocalizeResult> {
+  const res = await fetch(`${API_BASE}/api/admin/posts/${slug}/localize-images`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("外链转本地失败");
+  return res.json();
+}
+
+export async function localizeAllImages(): Promise<LocalizeAllResult> {
+  const res = await fetch(`${API_BASE}/api/admin/localize-all-images`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("批量外链转本地失败");
+  return res.json();
+}
+
+/* ── Halo 迁移导入 ─────────────────────────── */
+export type HaloPreview = {
+  success: boolean;
+  preview: { postCount: number; tagCount: number; categoryCount: number; commentCount: number };
+  postTitles: { title: string; slug: string }[];
+  tagNames: string[];
+};
+
+export async function previewHaloImport(data: any): Promise<HaloPreview> {
+  const res = await fetch(`${API_BASE}/api/admin/import/halo/preview`, {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Halo 数据解析失败");
+  return res.json();
+}
+
+export async function importHaloData(data: any, mode: "merge" | "overwrite" = "merge"): Promise<{ success: boolean; imported: any; mode: string }> {
+  const res = await fetch(`${API_BASE}/api/admin/import/halo`, {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ data, mode }),
+  });
+  if (!res.ok) throw new Error("Halo 数据导入失败");
+  return res.json();
+}
