@@ -6,12 +6,12 @@
 
 import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
-import { eq, desc, sql } from "drizzle-orm";
-import { posts, tags, postTags, pages, comments, reactions, visits } from "../../db/schema";
+import { eq, desc, sql, inArray } from "drizzle-orm";
+import { posts, tags, postTags, pages, comments, reactions, visits, postVersions } from "../../db/schema";
 import type {
   IDatabase, Post, PostSummary, Tag, Page, PageSummary,
   CreatePostInput, UpdatePostInput, UpsertPageInput,
-  BackupData, ImportResult, ViewStats, Comment, CreateCommentInput,
+  BackupData, ImportResult, ViewStats, Comment, CreateCommentInput, PostVersion
 } from "../interfaces";
 
 type DrizzleLibSQL = ReturnType<typeof drizzle>;
@@ -154,6 +154,7 @@ export class TursoAdapter implements IDatabase {
         pinned: posts.pinned,
         publishAt: posts.publishAt,
         seriesSlug: posts.seriesSlug,
+        category: posts.category,
       })
       .from(posts)
       .where(
@@ -336,6 +337,69 @@ export class TursoAdapter implements IDatabase {
   async deletePost(slug: string): Promise<boolean> {
     const result = await this.db.delete(posts).where(eq(posts.slug, slug)).returning();
     return result.length > 0;
+  }
+
+  async batchOperatePosts(slugs: string[], action: "publish" | "unpublish" | "delete"): Promise<number> {
+    if (!slugs || slugs.length === 0) return 0;
+    if (action === "delete") {
+      const result = await this.db.delete(posts).where(inArray(posts.slug, slugs)).returning();
+      return result.length;
+    } else {
+      const published = action === "publish";
+      const result = await this.db.update(posts)
+        .set({ published, updatedAt: new Date().toISOString() })
+        .where(inArray(posts.slug, slugs))
+        .returning();
+      return result.length;
+    }
+  }
+
+  async publishScheduledPosts(): Promise<number> {
+    const result = await this.db
+      .update(posts)
+      .set({ published: true })
+      .where(
+        sql`${posts.published} = 0 AND ${posts.publishAt} IS NOT NULL AND ${posts.publishAt} <= datetime('now')`
+      )
+      .returning();
+    return result.length;
+  }
+
+  /* ── 历史版本 ─────────────────────── */
+
+  async getPostVersions(slug: string): Promise<PostVersion[]> {
+    const post = await this.db.select({ id: posts.id }).from(posts).where(eq(posts.slug, slug)).get();
+    if (!post) return [];
+    return this.db.select().from(postVersions).where(eq(postVersions.postId, post.id)).orderBy(desc(postVersions.createdAt));
+  }
+
+  async createPostVersion(slug: string): Promise<boolean> {
+    const post = await this.db.select().from(posts).where(eq(posts.slug, slug)).get();
+    if (!post) return false;
+    await this.db.insert(postVersions).values({
+      postId: post.id,
+      title: post.title,
+      content: post.content,
+      excerpt: post.excerpt,
+    });
+    return true;
+  }
+
+  async restorePostVersion(slug: string, versionId: number): Promise<Post | null> {
+    const post = await this.db.select({ id: posts.id }).from(posts).where(eq(posts.slug, slug)).get();
+    if (!post) return null;
+    const version = await this.db.select().from(postVersions).where(eq(postVersions.id, versionId)).get();
+    if (!version || version.postId !== post.id) return null;
+
+    // 更新当前文章
+    await this.db.update(posts).set({
+      title: version.title,
+      content: version.content,
+      excerpt: version.excerpt,
+      updatedAt: sql`(datetime('now'))`,
+    }).where(eq(posts.id, post.id));
+
+    return this.getPostBySlug(slug) as Promise<Post | null>;
   }
 
   /* ── 标签 ─────────────────────── */
@@ -531,6 +595,9 @@ export class TursoAdapter implements IDatabase {
         ...p,
         excerpt: p.excerpt || "",
         coverColor: p.coverColor || "",
+        category: p.category || "",
+        seriesSlug: p.seriesSlug || null,
+        seriesOrder: p.seriesOrder ?? 0,
       })),
       tags: allTags,
       postTags: allPostTags,
@@ -617,6 +684,8 @@ export class TursoAdapter implements IDatabase {
         createdAt: posts.createdAt,
         pinned: posts.pinned,
         publishAt: posts.publishAt,
+        seriesSlug: posts.seriesSlug,
+        category: posts.category,
       })
       .from(posts)
       .where(
@@ -636,6 +705,8 @@ export class TursoAdapter implements IDatabase {
         tags: await this.getPostTags(post.id),
         pinned: post.pinned,
         publishAt: post.publishAt,
+        seriesSlug: post.seriesSlug || null,
+        category: post.category || "",
       }))
     );
   }

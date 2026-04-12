@@ -7,6 +7,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { sign, verify } from "hono/jwt";
+import { marked } from "marked";
 import { createDatabase, createObjectStorage } from "./storage/factory";
 import type { IDatabase } from "./storage/interfaces";
 import type { IObjectStorage } from "./storage/interfaces";
@@ -41,6 +42,20 @@ app.use("*", async (c, next) => {
   c.set("db", await createDatabase(c.env as unknown as Record<string, unknown>));
   c.set("storage", createObjectStorage(c.env as unknown as Record<string, unknown>));
   await next();
+});
+
+// 边缘缓存策略：针对公开 API 的 GET 请求应用缓存
+app.use("*", async (c, next) => {
+  await next();
+  const path = c.req.path;
+  
+  // 排除非 GET 请求、后台接口、以及请求失败的情况
+  if (c.req.method !== "GET" || c.res.status !== 200 || path.startsWith("/api/admin")) return;
+  
+  // 仅对未设置 Cache-Control 的 /api/ 开始的公开端点设置缓存
+  if (path.startsWith("/api/") && !c.res.headers.has("Cache-Control")) {
+    c.res.headers.set("Cache-Control", "public, max-age=15, s-maxage=60, stale-while-revalidate=30");
+  }
 });
 
 /* ── 公开 API ──────────────────────────────── */
@@ -160,6 +175,34 @@ app.post("/api/posts/:slug/comments", async (c) => {
       authorEmail: body.authorEmail?.trim() || "",
       content: body.content.trim(),
     });
+    
+    // 异步触发评论提醒邮件（Resend/Webhook）
+    const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const resendKey = (c.env as any).RESEND_API_KEY;
+    const adminEmail = (c.env as any).ADMIN_EMAIL;
+    if (resendKey && adminEmail) {
+      const emailPromise = fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${resendKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          from: "Monolith Bot <onboarding@resend.dev>", // Resend 测试域名或需要替换为自有域名
+          to: adminEmail,
+          subject: `[Monolith] 新评论待审核: ${slug}`,
+          html: `<p><strong>${escHtml(body.authorName.trim())}</strong> 刚刚在文章 <code>${escHtml(slug)}</code> 提交了评论：</p>
+                 <blockquote style="border-left: 4px solid #eee; padding-left: 10px; color: #555;">${escHtml(body.content.trim())}</blockquote>
+                 <p>邮箱: ${escHtml(body.authorEmail?.trim() || "无")}</p>
+                 <p><a href="https://${new URL(c.req.url).hostname}/admin/comments">前往后台审核</a></p>`
+        })
+      }).catch(() => {});
+      
+      if (c.executionCtx?.waitUntil) {
+        c.executionCtx.waitUntil(emailPromise);
+      }
+    }
+
     return c.json({ success: true, message: "评论已提交，等待审核" });
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : "提交失败" }, 400);
@@ -459,14 +502,49 @@ app.post("/api/admin/posts", async (c) => {
   return c.json(newPost, 201);
 });
 
-// 更新文章
+// 更新文章（同时创建版本快照如果是自动保存外的核心提交，不过我们可以简化，在每次保存时如果内容变更较大则创建版本，或者直接在保存时暴露保存新版本的选项。这里我们在更新接口本身提供一个 saveVersion 参数，或者每次 updatePost 之后根据是否新建版本保存）
 app.put("/api/admin/posts/:slug", async (c) => {
   const slug = c.req.param("slug");
   const body = await c.req.json();
   const db = c.get("db");
   const updated = await db.updatePost(slug, body);
   if (!updated) return c.json({ error: "文章未找到" }, 404);
+  
+  if (body.saveVersion) {
+    await db.createPostVersion(slug);
+  }
   return c.json(updated);
+});
+
+// 获取文章历史版本
+app.get("/api/admin/posts/:slug/versions", async (c) => {
+  const slug = c.req.param("slug");
+  const db = c.get("db");
+  const versions = await db.getPostVersions(slug);
+  return c.json(versions);
+});
+
+// 恢复文章至指定版本
+app.post("/api/admin/posts/:slug/versions/:id/restore", async (c) => {
+  const slug = c.req.param("slug");
+  const idStr = c.req.param("id");
+  const db = c.get("db");
+  const post = await db.restorePostVersion(slug, parseInt(idStr));
+  if (!post) return c.json({ error: "恢复失败，版本或文章不存在" }, 400);
+  // 恢复后也可以自动创建一个新快照
+  await db.createPostVersion(slug);
+  return c.json({ success: true, post });
+});
+
+// 批量操作文章：发布 / 撤回发布 / 删除
+app.post("/api/admin/posts/batch", async (c) => {
+  const { slugs, action } = await c.req.json<{ slugs: string[]; action: "publish" | "unpublish" | "delete" }>();
+  if (!slugs || !Array.isArray(slugs) || slugs.length === 0) {
+    return c.json({ error: "参数不正确" }, 400);
+  }
+  const db = c.get("db");
+  const count = await db.batchOperatePosts(slugs, action);
+  return c.json({ success: true, count, message: `成功处理 ${count} 篇文章` });
 });
 
 // 删除文章
@@ -1080,4 +1158,13 @@ app.get("/api/health", (c) => {
   return c.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async scheduled(event: any, env: Bindings, ctx: any) {
+    const db = await createDatabase(env as unknown as Record<string, unknown>);
+    const count = await db.publishScheduledPosts();
+    if (count > 0) {
+      console.log(`[Cron] Published ${count} scheduled posts.`);
+    }
+  }
+};

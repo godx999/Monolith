@@ -101,3 +101,17 @@ export const visits = sqliteTable("visits", {
     .notNull()
     .default(sql`(datetime('now'))`),
 });
+
+/* ── 文章版本历史表 ────────────────────────── */
+export const postVersions = sqliteTable("post_versions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  postId: integer("post_id")
+    .notNull()
+    .references(() => posts.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  excerpt: text("excerpt").default(""),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});

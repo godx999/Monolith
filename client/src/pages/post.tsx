@@ -12,6 +12,7 @@ import { CommentsSection } from "@/components/comments";
 import { RelatedPosts } from "@/components/related-posts";
 import { SeriesNav } from "@/components/series-nav";
 import { PostReactions } from "@/components/post-reactions";
+import { ShareButtons } from "@/components/share-buttons";
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
@@ -205,11 +206,16 @@ export function PostPage() {
           />
 
           <Separator className="mt-[48px] bg-border/30" />
-          <div className="mt-[24px] flex items-center justify-between animate-fade-in delay-4">
-            <Link href="/" className="inline-flex items-center gap-[6px] text-[13px] text-muted-foreground/60 transition-all duration-200 hover:text-foreground hover:-translate-x-[2px]">
-              <ArrowLeft className="h-[14px] w-[14px]" />返回首页
-            </Link>
-            <span className="text-[12px] text-muted-foreground/40">发布于 {formatDate(post.createdAt)}</span>
+          <div className="mt-[24px] flex items-center justify-between flex-wrap gap-[16px] animate-fade-in delay-4">
+            <div className="flex items-center gap-[16px]">
+              <Link href="/" className="inline-flex items-center gap-[6px] text-[13px] text-muted-foreground/60 transition-all duration-200 hover:text-foreground hover:-translate-x-[2px]">
+                <ArrowLeft className="h-[14px] w-[14px]" />返回首页
+              </Link>
+              <span className="text-[12px] text-muted-foreground/40 hidden sm:inline-block">发布于 {formatDate(post.createdAt)}</span>
+            </div>
+            
+            {/* 分享按钮组件 */}
+            <ShareButtons title={post.title} />
           </div>
 
           {/* 表情反应 */}

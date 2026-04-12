@@ -98,3 +98,15 @@ export const pgVisits = pgTable("visits", {
   deviceType: text("device_type").notNull().default("desktop"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/* ── 文章版本历史表 ────────────────────────── */
+export const pgPostVersions = pgTable("post_versions", {
+  id: serial("id").primaryKey(),
+  postId: integer("post_id")
+    .notNull()
+    .references(() => pgPosts.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  excerpt: text("excerpt").default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

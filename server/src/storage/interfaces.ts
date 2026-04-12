@@ -145,6 +145,15 @@ export type CreateCommentInput = {
   content: string;
 };
 
+export type PostVersion = {
+  id: number;
+  postId: number;
+  title: string;
+  content: string;
+  excerpt: string | null;
+  createdAt: string;
+};
+
 /* ── 数据库抽象接口 ───────────────────────── */
 
 export interface IDatabase {
@@ -155,6 +164,13 @@ export interface IDatabase {
   createPost(data: CreatePostInput): Promise<Post>;
   updatePost(slug: string, data: UpdatePostInput): Promise<Post | null>;
   deletePost(slug: string): Promise<boolean>;
+  publishScheduledPosts(): Promise<number>;
+  batchOperatePosts(slugs: string[], action: "publish" | "unpublish" | "delete"): Promise<number>;
+  
+  /* 文章版本历史 */
+  getPostVersions(slug: string): Promise<PostVersion[]>;
+  createPostVersion(slug: string): Promise<boolean>;
+  restorePostVersion(slug: string, versionId: number): Promise<Post | null>;
 
   /* 标签 */
   getAllTags(): Promise<Tag[]>;

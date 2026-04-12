@@ -6,12 +6,12 @@
 
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq, desc, sql } from "drizzle-orm";
-import { pgPosts, pgTags, pgPostTags, pgPages, pgSettings, pgComments, pgReactions, pgVisits } from "../../db/schema-pg";
+import { eq, desc, sql, inArray } from "drizzle-orm";
+import { pgPosts, pgTags, pgPostTags, pgPages, pgSettings, pgComments, pgReactions, pgVisits, pgPostVersions } from "../../db/schema-pg";
 import type {
   IDatabase, Post, PostSummary, Tag, Page, PageSummary,
   CreatePostInput, UpdatePostInput, UpsertPageInput,
-  BackupData, ImportResult, ViewStats, Comment, CreateCommentInput,
+  BackupData, ImportResult, ViewStats, Comment, CreateCommentInput, PostVersion
 } from "../interfaces";
 
 type DrizzlePG = ReturnType<typeof drizzle>;
@@ -152,6 +152,7 @@ export class PostgresAdapter implements IDatabase {
         pinned: pgPosts.pinned,
         publishAt: pgPosts.publishAt,
         seriesSlug: pgPosts.seriesSlug,
+        category: pgPosts.category,
       })
       .from(pgPosts)
       .where(
@@ -334,6 +335,76 @@ export class PostgresAdapter implements IDatabase {
   async deletePost(slug: string): Promise<boolean> {
     const result = await this.db.delete(pgPosts).where(eq(pgPosts.slug, slug)).returning();
     return result.length > 0;
+  }
+
+  async batchOperatePosts(slugs: string[], action: "publish" | "unpublish" | "delete"): Promise<number> {
+    if (!slugs || slugs.length === 0) return 0;
+    if (action === "delete") {
+      const result = await this.db.delete(pgPosts).where(inArray(pgPosts.slug, slugs)).returning();
+      return result.length;
+    } else {
+      const published = action === "publish";
+      const result = await this.db.update(pgPosts)
+        .set({ published, updatedAt: new Date() })
+        .where(inArray(pgPosts.slug, slugs))
+        .returning();
+      return result.length;
+    }
+  }
+
+  async publishScheduledPosts(): Promise<number> {
+    const result = await this.db
+      .update(pgPosts)
+      .set({ published: true })
+      .where(
+        sql`${pgPosts.published} = false AND ${pgPosts.publishAt} IS NOT NULL AND ${pgPosts.publishAt} <= NOW()`
+      )
+      .returning();
+    return result.length;
+  }
+
+  /* ── 历史版本 ─────────────────────── */
+
+  async getPostVersions(slug: string): Promise<PostVersion[]> {
+    const post = await this.db.select({ id: pgPosts.id }).from(pgPosts).where(eq(pgPosts.slug, slug));
+    if (!post || post.length === 0) return [];
+    
+    const versions = await this.db.select().from(pgPostVersions).where(eq(pgPostVersions.postId, post[0].id)).orderBy(desc(pgPostVersions.createdAt));
+    return versions.map(v => ({
+      ...v,
+      id: v.id,
+      postId: v.postId,
+      createdAt: v.createdAt.toISOString()
+    }));
+  }
+
+  async createPostVersion(slug: string): Promise<boolean> {
+    const post = await this.db.select().from(pgPosts).where(eq(pgPosts.slug, slug));
+    if (!post || post.length === 0) return false;
+    await this.db.insert(pgPostVersions).values({
+      postId: post[0].id,
+      title: post[0].title,
+      content: post[0].content,
+      excerpt: post[0].excerpt,
+    });
+    return true;
+  }
+
+  async restorePostVersion(slug: string, versionId: number): Promise<Post | null> {
+    const post = await this.db.select({ id: pgPosts.id }).from(pgPosts).where(eq(pgPosts.slug, slug));
+    if (!post || post.length === 0) return null;
+    const version = await this.db.select().from(pgPostVersions).where(eq(pgPostVersions.id, versionId));
+    if (!version || version.length === 0 || version[0].postId !== post[0].id) return null;
+
+    // 更新当前文章
+    await this.db.update(pgPosts).set({
+      title: version[0].title,
+      content: version[0].content,
+      excerpt: version[0].excerpt,
+      updatedAt: new Date(),
+    }).where(eq(pgPosts.id, post[0].id));
+
+    return this.getPostBySlug(slug) as Promise<Post | null>;
   }
 
   /* ── 标签 ─────────────────────── */
@@ -529,6 +600,9 @@ export class PostgresAdapter implements IDatabase {
         viewCount: p.viewCount ?? 0,
         pinned: p.pinned,
         publishAt: this.ts(p.publishAt),
+        seriesSlug: p.seriesSlug || null,
+        category: p.category || "",
+        seriesOrder: p.seriesOrder ?? 0,
       })),
       tags: allTags,
       postTags: allPostTags,
@@ -619,6 +693,8 @@ export class PostgresAdapter implements IDatabase {
         createdAt: pgPosts.createdAt,
         pinned: pgPosts.pinned,
         publishAt: pgPosts.publishAt,
+        seriesSlug: pgPosts.seriesSlug,
+        category: pgPosts.category,
       })
       .from(pgPosts)
       .where(
@@ -638,6 +714,8 @@ export class PostgresAdapter implements IDatabase {
         tags: await this.getPostTags(post.id),
         pinned: post.pinned,
         publishAt: this.ts(post.publishAt),
+        seriesSlug: post.seriesSlug || null,
+        category: post.category || "",
       }))
     );
   }
@@ -880,11 +958,11 @@ export class PostgresAdapter implements IDatabase {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `;
-    const byDay = await this.client`SELECT DATE(created_at) as date, COUNT(*)::int as count FROM visits WHERE created_at >= NOW() - INTERVAL '${sql.raw(String(days))} days' GROUP BY DATE(created_at) ORDER BY date`;
-    const byCountry = await this.client`SELECT country, COUNT(*)::int as count FROM visits WHERE created_at >= NOW() - INTERVAL '${sql.raw(String(days))} days' GROUP BY country ORDER BY count DESC LIMIT 10`;
-    const byReferer = await this.client`SELECT referer_domain as referer, COUNT(*)::int as count FROM visits WHERE created_at >= NOW() - INTERVAL '${sql.raw(String(days))} days' AND referer_domain != '' GROUP BY referer_domain ORDER BY count DESC LIMIT 10`;
-    const byDevice = await this.client`SELECT device_type as device, COUNT(*)::int as count FROM visits WHERE created_at >= NOW() - INTERVAL '${sql.raw(String(days))} days' GROUP BY device_type ORDER BY count DESC`;
-    const byPage = await this.client`SELECT path, COUNT(*)::int as count FROM visits WHERE created_at >= NOW() - INTERVAL '${sql.raw(String(days))} days' GROUP BY path ORDER BY count DESC LIMIT 10`;
+    const byDay = await this.client`SELECT DATE(created_at) as date, COUNT(*)::int as count FROM visits WHERE created_at >= NOW() - INTERVAL '1 day' * ${days} GROUP BY DATE(created_at) ORDER BY date`;
+    const byCountry = await this.client`SELECT country, COUNT(*)::int as count FROM visits WHERE created_at >= NOW() - INTERVAL '1 day' * ${days} GROUP BY country ORDER BY count DESC LIMIT 10`;
+    const byReferer = await this.client`SELECT referer_domain as referer, COUNT(*)::int as count FROM visits WHERE created_at >= NOW() - INTERVAL '1 day' * ${days} AND referer_domain != '' GROUP BY referer_domain ORDER BY count DESC LIMIT 10`;
+    const byDevice = await this.client`SELECT device_type as device, COUNT(*)::int as count FROM visits WHERE created_at >= NOW() - INTERVAL '1 day' * ${days} GROUP BY device_type ORDER BY count DESC`;
+    const byPage = await this.client`SELECT path, COUNT(*)::int as count FROM visits WHERE created_at >= NOW() - INTERVAL '1 day' * ${days} GROUP BY path ORDER BY count DESC LIMIT 10`;
     return {
       visitsByDay: byDay.map(r => ({ date: r.date as string, count: r.count as number })),
       topCountries: byCountry.map(r => ({ country: r.country as string, count: r.count as number })),

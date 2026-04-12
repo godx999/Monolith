@@ -150,7 +150,7 @@ export async function createPost(data: {
 
 export async function updatePost(
   slug: string,
-  data: Partial<Post & { tags: string[] }>
+  data: Partial<Post & { tags: string[]; saveVersion?: boolean }>
 ): Promise<Post> {
   const res = await fetch(`${API_BASE}/api/admin/posts/${slug}`, {
     method: "PUT",
@@ -166,7 +166,46 @@ export async function deletePost(slug: string): Promise<void> {
     method: "DELETE",
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error("删除文章失败");
+  if (!res.ok) throw new Error("删除失败");
+}
+
+export async function batchOperatePosts(slugs: string[], action: "publish" | "unpublish" | "delete"): Promise<{ count: number }> {
+  const res = await fetch(`${API_BASE}/api/admin/posts/batch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ slugs, action }),
+  });
+  if (!res.ok) throw new Error("批量操作失败");
+  return res.json();
+}
+
+export type PostVersion = {
+  id: number;
+  postId: number;
+  title: string;
+  content: string;
+  excerpt: string | null;
+  createdAt: string;
+};
+
+export async function fetchPostVersions(slug: string): Promise<PostVersion[]> {
+  const res = await fetch(`${API_BASE}/api/admin/posts/${slug}/versions`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("获取版本失败");
+  return res.json();
+}
+
+export async function restorePostVersion(slug: string, versionId: number): Promise<{ success: boolean; post: Post }> {
+  const res = await fetch(`${API_BASE}/api/admin/posts/${slug}/versions/${versionId}/restore`, { 
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.error || "恢复版本失败");
+  }
+  return res.json();
 }
 
 export async function uploadImage(file: File): Promise<{ url: string }> {

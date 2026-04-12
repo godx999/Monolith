@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link, useLocation } from "wouter";
-import { checkAuth, clearToken, fetchAdminPosts, deletePost, fetchViewStats, type Post, type ViewStats } from "@/lib/api";
-import { Plus, Edit, Trash2, LogOut, Eye, FileText, Tag, Clock, Search, Settings, ExternalLink, HardDrive, StickyNote, TrendingUp, BarChart3, MessageCircle, Image as ImageIcon, ArrowRight, Globe, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
+import { checkAuth, clearToken, fetchAdminPosts, deletePost, batchOperatePosts, fetchViewStats, type Post, type ViewStats } from "@/lib/api";
+import { Plus, Edit, Trash2, LogOut, Eye, FileText, Tag, Clock, Search, Settings, ExternalLink, HardDrive, StickyNote, TrendingUp, BarChart3, MessageCircle, Image as ImageIcon, ArrowRight, Globe, CheckCircle2, AlertTriangle, XCircle, CheckSquare, Square, EyeOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 function timeAgo(d: string): string {
@@ -43,8 +43,46 @@ export function AdminDashboard() {
     try {
       await deletePost(slug);
       setPosts((prev) => prev.filter((p) => p.slug !== slug));
+      setSelectedSlugs((prev) => { const next = new Set(prev); next.delete(slug); return next; });
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(new Set());
+  const [batchOperating, setBatchOperating] = useState(false);
+
+  const toggleSelectAll = () => {
+    if (selectedSlugs.size === filteredPosts.length) setSelectedSlugs(new Set());
+    else setSelectedSlugs(new Set(filteredPosts.map((p) => p.slug)));
+  };
+
+  const toggleSelect = (slug: string) => {
+    const next = new Set(selectedSlugs);
+    if (next.has(slug)) next.delete(slug);
+    else next.add(slug);
+    setSelectedSlugs(next);
+  };
+
+  const handleBatchOperate = async (action: "publish" | "unpublish" | "delete") => {
+    if (selectedSlugs.size === 0) return;
+    const actionName = action === "publish" ? "发布" : action === "unpublish" ? "撤回发布" : "删除";
+    if (!confirm(`确定要批量${actionName}选中的 ${selectedSlugs.size} 篇文章吗？${action === "delete" ? "此操作不可恢复！" : ""}`)) return;
+    
+    setBatchOperating(true);
+    try {
+      const slugs = Array.from(selectedSlugs);
+      await batchOperatePosts(slugs, action);
+      if (action === "delete") {
+        setPosts((prev) => prev.filter((p) => !slugs.includes(p.slug)));
+      } else {
+        setPosts((prev) => prev.map((p) => slugs.includes(p.slug) ? { ...p, published: action === "publish" } : p));
+      }
+      setSelectedSlugs(new Set());
+    } catch (err: any) {
+      alert(err.message || "批量操作失败");
+    } finally {
+      setBatchOperating(false);
     }
   };
 
@@ -167,6 +205,32 @@ export function AdminDashboard() {
             <span className="text-[11px] text-muted-foreground/25">{filteredPosts.length} 篇</span>
           </div>
 
+          {/* 批量操作工具栏 */}
+          {filteredPosts.length > 0 && (
+            <div className={`mb-[10px] flex items-center justify-between rounded-lg border border-border/15 bg-card/10 px-[14px] py-[8px] transition-all ${selectedSlugs.size > 0 ? "border-cyan-500/30 bg-cyan-500/5" : ""}`}>
+              <div className="flex items-center gap-[10px]">
+                <button onClick={toggleSelectAll} className="text-muted-foreground/40 hover:text-cyan-400 transition-colors flex items-center gap-[6px]">
+                  {selectedSlugs.size === filteredPosts.length ? <CheckSquare className="h-[14px] w-[14px] text-cyan-400" /> : <Square className="h-[14px] w-[14px]" />}
+                  <span className="text-[12px]">{selectedSlugs.size > 0 ? `已选 ${selectedSlugs.size} 项` : "全选"}</span>
+                </button>
+              </div>
+              
+              {selectedSlugs.size > 0 && (
+                <div className="flex items-center gap-[6px] animate-fade-in">
+                  <button onClick={() => handleBatchOperate("publish")} disabled={batchOperating} className="flex items-center gap-[4px] px-[10px] py-[4px] rounded-md border border-border/20 text-[11px] text-emerald-400 hover:bg-emerald-400/10 transition-colors disabled:opacity-50">
+                    <Eye className="h-[11px] w-[11px]" /> 发布
+                  </button>
+                  <button onClick={() => handleBatchOperate("unpublish")} disabled={batchOperating} className="flex items-center gap-[4px] px-[10px] py-[4px] rounded-md border border-border/20 text-[11px] text-amber-400 hover:bg-amber-400/10 transition-colors disabled:opacity-50">
+                    <EyeOff className="h-[11px] w-[11px]" /> 撤回
+                  </button>
+                  <button onClick={() => handleBatchOperate("delete")} disabled={batchOperating} className="flex items-center gap-[4px] px-[10px] py-[4px] rounded-md border border-red-500/30 text-[11px] text-red-400 hover:bg-red-400/10 transition-colors disabled:opacity-50">
+                    <Trash2 className="h-[11px] w-[11px]" /> 删除
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {loading ? (
             <div className="space-y-[6px]">{[1, 2, 3].map((i) => <div key={i} className="h-[72px] animate-pulse rounded-lg border border-border/10 bg-card/5" />)}</div>
           ) : filteredPosts.length === 0 ? (
@@ -184,7 +248,13 @@ export function AdminDashboard() {
           ) : (
             <div className="space-y-[4px]">
               {filteredPosts.map((post) => (
-                <div key={post.slug} className="group relative flex items-center gap-[12px] rounded-lg border border-border/12 bg-card/5 px-[14px] py-[12px] hover:border-border/35 hover:bg-card/20 transition-all">
+                <div key={post.slug} className={`group relative flex items-center gap-[12px] rounded-lg border px-[14px] py-[12px] transition-all ${selectedSlugs.has(post.slug) ? "border-cyan-500/30 bg-cyan-500/5 text-cyan-400" : "border-border/12 bg-card/5 hover:border-border/35 hover:bg-card/20"}`}>
+                  
+                  {/* 复选框 */}
+                  <button onClick={() => toggleSelect(post.slug)} className={`shrink-0 transition-colors ${selectedSlugs.has(post.slug) ? "text-cyan-400" : "text-muted-foreground/20 group-hover:text-muted-foreground/40"}`}>
+                    {selectedSlugs.has(post.slug) ? <CheckSquare className="h-[14px] w-[14px]" /> : <Square className="h-[14px] w-[14px]" />}
+                  </button>
+
                   {/* 状态指示点 */}
                   <div className={`h-[6px] w-[6px] rounded-full shrink-0 ${post.published ? "bg-emerald-400/60" : "bg-amber-400/50"}`} />
 
