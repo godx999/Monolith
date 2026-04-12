@@ -1242,3 +1242,197 @@
   border-color: oklch(0.55 0.18 220 / 70%);
   background: oklch(0.55 0.18 220 / 14%);
 }
+
+/* ── 访客分析面板 ──────────────────────────── */
+
+.analytics-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid oklch(0.35 0 0 / 30%);
+  background: oklch(0.18 0 0 / 50%);
+}
+
+.analytics-card__label {
+  font-size: 11px;
+  color: oklch(0.5 0 0);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.analytics-card__value {
+  font-size: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: oklch(0.9 0 0);
+}
+
+.analytics-section {
+  border: 1px solid oklch(0.35 0 0 / 30%);
+  border-radius: 10px;
+  background: oklch(0.18 0 0 / 50%);
+  overflow: hidden;
+}
+
+.analytics-section__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: oklch(0.7 0 0);
+  border-bottom: 1px solid oklch(0.35 0 0 / 20%);
+}
+
+/* 柱状图 */
+.analytics-chart {
+  padding: 16px;
+}
+
+.analytics-chart__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 140px;
+}
+
+.analytics-chart__col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.analytics-chart__bar-wrapper {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.analytics-chart__bar {
+  width: 100%;
+  max-width: 32px;
+  min-height: 2px;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(to top, oklch(0.55 0.18 220), oklch(0.65 0.15 200));
+  transition: height 0.4s ease;
+}
+
+.analytics-chart__label {
+  font-size: 9px;
+  color: oklch(0.45 0 0);
+  white-space: nowrap;
+}
+
+.analytics-chart__count {
+  font-size: 9px;
+  font-weight: 600;
+  color: oklch(0.6 0 0);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 列表 */
+.analytics-list {
+  padding: 8px 0;
+}
+
+.analytics-list__empty {
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 12px;
+  color: oklch(0.4 0 0);
+}
+
+.analytics-list__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px;
+}
+
+.analytics-list__name {
+  flex-shrink: 0;
+  width: 90px;
+  font-size: 12px;
+  color: oklch(0.7 0 0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.analytics-list__name--mono {
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 11px;
+}
+
+.analytics-list__bar-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: oklch(0.25 0 0 / 50%);
+  overflow: hidden;
+}
+
+.analytics-list__bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.analytics-list__bar-fill--blue  { background: oklch(0.6 0.18 220); }
+.analytics-list__bar-fill--green { background: oklch(0.6 0.18 160); }
+.analytics-list__bar-fill--violet { background: oklch(0.6 0.18 280); }
+.analytics-list__bar-fill--amber  { background: oklch(0.7 0.16 80);  }
+
+.analytics-list__count {
+  flex-shrink: 0;
+  width: 36px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: oklch(0.65 0 0);
+}
+
+/* 亮色模式 */
+[data-theme="light"] .analytics-card {
+  background: oklch(0.97 0 0);
+  border-color: oklch(0.88 0 0 / 40%);
+}
+
+[data-theme="light"] .analytics-card__value {
+  color: oklch(0.15 0 0);
+}
+
+[data-theme="light"] .analytics-section {
+  background: oklch(0.97 0 0);
+  border-color: oklch(0.88 0 0 / 40%);
+}
+
+[data-theme="light"] .analytics-section__title {
+  color: oklch(0.35 0 0);
+  border-bottom-color: oklch(0.88 0 0 / 30%);
+}
+
+[data-theme="light"] .analytics-chart__bar {
+  background: linear-gradient(to top, oklch(0.5 0.18 220), oklch(0.6 0.15 200));
+}
+
+[data-theme="light"] .analytics-list__bar-track {
+  background: oklch(0.92 0 0);
+}
+
+[data-theme="light"] .analytics-list__name {
+  color: oklch(0.35 0 0);
+}
+
+[data-theme="light"] .analytics-list__count {
+  color: oklch(0.35 0 0);
+}

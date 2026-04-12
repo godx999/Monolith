@@ -73,13 +73,27 @@ app.get("/api/posts/:slug", async (c) => {
   try {
     const viewPromise = db.incrementViewCount(slug);
     const dailyPromise = db.recordDailyView();
+
+    // 采集访客信息
+    const country = c.req.header("CF-IPCountry") || "XX";
+    const referer = c.req.header("Referer") || "";
+    let refererDomain = "";
+    try { if (referer) refererDomain = new URL(referer).hostname; } catch { /* */ }
+    const ua = (c.req.header("User-Agent") || "").toLowerCase();
+    const deviceType = /bot|crawl|spider|slurp/i.test(ua) ? "bot"
+      : /mobile|android|iphone/i.test(ua) ? "mobile"
+      : /tablet|ipad/i.test(ua) ? "tablet" : "desktop";
+    const visitPromise = db.recordVisit({ path: `/posts/${slug}`, country, refererDomain, deviceType });
+
     // 边缘环境中使用 waitUntil 确保异步任务完成
     if (c.executionCtx?.waitUntil) {
       c.executionCtx.waitUntil(viewPromise);
       c.executionCtx.waitUntil(dailyPromise);
+      c.executionCtx.waitUntil(visitPromise);
     } else {
       viewPromise.catch(() => {});
       dailyPromise.catch(() => {});
+      visitPromise.catch(() => {});
     }
   } catch {
     /* 浏览量统计失败不影响文章返回 */
@@ -393,6 +407,14 @@ app.get("/api/admin/stats", async (c) => {
   const db = c.get("db");
   const stats = await db.getViewStats(10);
   return c.json(stats);
+});
+
+// 访客分析数据
+app.get("/api/admin/analytics", async (c) => {
+  const days = parseInt(c.req.query("days") || "7", 10);
+  const db = c.get("db");
+  const analytics = await db.getAnalytics(Math.min(days, 90));
+  return c.json(analytics);
 });
 
 // 获取所有评论（管理后台）

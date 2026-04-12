@@ -7,7 +7,7 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { eq, desc, sql } from "drizzle-orm";
-import { pgPosts, pgTags, pgPostTags, pgPages, pgSettings, pgComments, pgReactions } from "../../db/schema-pg";
+import { pgPosts, pgTags, pgPostTags, pgPages, pgSettings, pgComments, pgReactions, pgVisits } from "../../db/schema-pg";
 import type {
   IDatabase, Post, PostSummary, Tag, Page, PageSummary,
   CreatePostInput, UpdatePostInput, UpsertPageInput,
@@ -841,5 +841,40 @@ export class PostgresAdapter implements IDatabase {
     }
     await this.client`INSERT INTO reactions (post_slug, type, ip_hash) VALUES (${postSlug}, ${type}, ${ipHash})`;
     return { action: "added" };
+  }
+
+  async recordVisit(data: { path: string; country: string; refererDomain: string; deviceType: string }): Promise<void> {
+    await this.client`
+      CREATE TABLE IF NOT EXISTS visits (
+        id SERIAL PRIMARY KEY, path TEXT NOT NULL,
+        country TEXT NOT NULL DEFAULT 'XX', referer_domain TEXT NOT NULL DEFAULT '',
+        device_type TEXT NOT NULL DEFAULT 'desktop',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+    await this.client`INSERT INTO visits (path, country, referer_domain, device_type) VALUES (${data.path}, ${data.country}, ${data.refererDomain}, ${data.deviceType})`;
+  }
+
+  async getAnalytics(days: number) {
+    await this.client`
+      CREATE TABLE IF NOT EXISTS visits (
+        id SERIAL PRIMARY KEY, path TEXT NOT NULL,
+        country TEXT NOT NULL DEFAULT 'XX', referer_domain TEXT NOT NULL DEFAULT '',
+        device_type TEXT NOT NULL DEFAULT 'desktop',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+    const byDay = await this.client`SELECT DATE(created_at) as date, COUNT(*)::int as count FROM visits WHERE created_at >= NOW() - INTERVAL '${sql.raw(String(days))} days' GROUP BY DATE(created_at) ORDER BY date`;
+    const byCountry = await this.client`SELECT country, COUNT(*)::int as count FROM visits WHERE created_at >= NOW() - INTERVAL '${sql.raw(String(days))} days' GROUP BY country ORDER BY count DESC LIMIT 10`;
+    const byReferer = await this.client`SELECT referer_domain as referer, COUNT(*)::int as count FROM visits WHERE created_at >= NOW() - INTERVAL '${sql.raw(String(days))} days' AND referer_domain != '' GROUP BY referer_domain ORDER BY count DESC LIMIT 10`;
+    const byDevice = await this.client`SELECT device_type as device, COUNT(*)::int as count FROM visits WHERE created_at >= NOW() - INTERVAL '${sql.raw(String(days))} days' GROUP BY device_type ORDER BY count DESC`;
+    const byPage = await this.client`SELECT path, COUNT(*)::int as count FROM visits WHERE created_at >= NOW() - INTERVAL '${sql.raw(String(days))} days' GROUP BY path ORDER BY count DESC LIMIT 10`;
+    return {
+      visitsByDay: byDay.map(r => ({ date: r.date as string, count: r.count as number })),
+      topCountries: byCountry.map(r => ({ country: r.country as string, count: r.count as number })),
+      topReferers: byReferer.map(r => ({ referer: r.referer as string, count: r.count as number })),
+      deviceBreakdown: byDevice.map(r => ({ device: r.device as string, count: r.count as number })),
+      topPages: byPage.map(r => ({ path: r.path as string, count: r.count as number })),
+    };
   }
 }

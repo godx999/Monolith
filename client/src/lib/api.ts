@@ -186,6 +186,22 @@ export async function fetchViewStats(): Promise<ViewStats> {
   return res.json();
 }
 
+export type AnalyticsData = {
+  visitsByDay: { date: string; count: number }[];
+  topCountries: { country: string; count: number }[];
+  topReferers: { referer: string; count: number }[];
+  deviceBreakdown: { device: string; count: number }[];
+  topPages: { path: string; count: number }[];
+};
+
+export async function fetchAnalytics(days = 7): Promise<AnalyticsData> {
+  const res = await fetch(`${API_BASE}/api/admin/analytics?days=${days}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("获取分析数据失败");
+  return res.json();
+}
+
 /* ── 评论 ──────────────────────────────────── */
 export type CommentData = {
   id: number;

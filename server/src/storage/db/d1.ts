@@ -5,7 +5,7 @@
 
 import { drizzle } from "drizzle-orm/d1";
 import { eq, desc, sql } from "drizzle-orm";
-import { posts, tags, postTags, pages, comments, reactions } from "../../db/schema";
+import { posts, tags, postTags, pages, comments, reactions, visits } from "../../db/schema";
 import type {
   IDatabase, Post, PostSummary, Tag, Page, PageSummary,
   CreatePostInput, UpdatePostInput, UpsertPageInput,
@@ -36,6 +36,7 @@ export class D1Adapter implements IDatabase {
         await this.ensureCommentsTable();
         await this.ensureSeriesColumns();
         await this.ensureReactionsTable();
+        await this.ensureVisitsTable();
       })();
     }
     await this.schemaReady;
@@ -843,5 +844,56 @@ export class D1Adapter implements IDatabase {
     }
     await this.db.insert(reactions).values({ postSlug, type, ipHash });
     return { action: "added" };
+  }
+
+  private async ensureVisitsTable(): Promise<void> {
+    await this.db.run(sql`CREATE TABLE IF NOT EXISTS visits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      path TEXT NOT NULL,
+      country TEXT NOT NULL DEFAULT 'XX',
+      referer_domain TEXT NOT NULL DEFAULT '',
+      device_type TEXT NOT NULL DEFAULT 'desktop',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+  }
+
+  async recordVisit(data: { path: string; country: string; refererDomain: string; deviceType: string }): Promise<void> {
+    await this.ensureVisitsTable();
+    await this.db.insert(visits).values({
+      path: data.path,
+      country: data.country,
+      refererDomain: data.refererDomain,
+      deviceType: data.deviceType,
+    });
+  }
+
+  async getAnalytics(days: number) {
+    await this.ensureVisitsTable();
+    const since = `datetime('now', '-${days} days')`;
+
+    const byDay = await this.db.run(
+      sql`SELECT DATE(created_at) as date, COUNT(*) as count FROM visits WHERE created_at >= ${sql.raw(since)} GROUP BY DATE(created_at) ORDER BY date`
+    );
+    const byCountry = await this.db.run(
+      sql`SELECT country, COUNT(*) as count FROM visits WHERE created_at >= ${sql.raw(since)} GROUP BY country ORDER BY count DESC LIMIT 10`
+    );
+    const byReferer = await this.db.run(
+      sql`SELECT referer_domain as referer, COUNT(*) as count FROM visits WHERE created_at >= ${sql.raw(since)} AND referer_domain != '' GROUP BY referer_domain ORDER BY count DESC LIMIT 10`
+    );
+    const byDevice = await this.db.run(
+      sql`SELECT device_type as device, COUNT(*) as count FROM visits WHERE created_at >= ${sql.raw(since)} GROUP BY device_type ORDER BY count DESC`
+    );
+    const byPage = await this.db.run(
+      sql`SELECT path, COUNT(*) as count FROM visits WHERE created_at >= ${sql.raw(since)} GROUP BY path ORDER BY count DESC LIMIT 10`
+    );
+
+    type Row = Record<string, unknown>;
+    return {
+      visitsByDay: (byDay.results as Row[] || []).map(r => ({ date: r.date as string, count: r.count as number })),
+      topCountries: (byCountry.results as Row[] || []).map(r => ({ country: r.country as string, count: r.count as number })),
+      topReferers: (byReferer.results as Row[] || []).map(r => ({ referer: r.referer as string, count: r.count as number })),
+      deviceBreakdown: (byDevice.results as Row[] || []).map(r => ({ device: r.device as string, count: r.count as number })),
+      topPages: (byPage.results as Row[] || []).map(r => ({ path: r.path as string, count: r.count as number })),
+    };
   }
 }

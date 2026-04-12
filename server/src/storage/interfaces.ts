@@ -206,6 +206,16 @@ export interface IDatabase {
   /* 表情反应 */
   getReactions(postSlug: string): Promise<Record<string, number>>;
   toggleReaction(postSlug: string, type: string, ipHash: string): Promise<{ action: "added" | "removed" }>;
+
+  /* 访客分析 */
+  recordVisit(data: { path: string; country: string; refererDomain: string; deviceType: string }): Promise<void>;
+  getAnalytics(days: number): Promise<{
+    visitsByDay: { date: string; count: number }[];
+    topCountries: { country: string; count: number }[];
+    topReferers: { referer: string; count: number }[];
+    deviceBreakdown: { device: string; count: number }[];
+    topPages: { path: string; count: number }[];
+  }>;
 }
 
 /* ── 对象存储抽象接口 ─────────────────────── */

@@ -16,6 +16,7 @@ import { AdminBackup } from "@/pages/admin/backup";
 import { AdminPages } from "@/pages/admin/pages";
 import { AdminComments } from "@/pages/admin/comments";
 import { AdminMedia } from "@/pages/admin/media";
+import { AdminAnalytics } from "@/pages/admin/analytics";
 import { DynamicPage } from "@/pages/dynamic-page";
 import { NotFoundPage } from "@/pages/not-found";
 
@@ -102,6 +103,9 @@ export function App() {
             </Route>
             <Route path="/admin/media">
               <ProtectedRoute><AdminMedia /></ProtectedRoute>
+            </Route>
+            <Route path="/admin/analytics">
+              <ProtectedRoute><AdminAnalytics /></ProtectedRoute>
             </Route>
             <Route path="/admin">
               <ProtectedRoute><AdminDashboard /></ProtectedRoute>

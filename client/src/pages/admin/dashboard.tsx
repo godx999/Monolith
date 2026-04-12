@@ -78,8 +78,9 @@ export function AdminDashboard() {
     { href: "/admin/settings",  icon: Settings,       label: "设置",   color: "text-blue-400",    bg: "bg-blue-500/10" },
     { href: "/admin/pages",     icon: StickyNote,     label: "页面",   color: "text-violet-400",  bg: "bg-violet-500/10" },
     { href: "/admin/comments",  icon: MessageCircle,  label: "评论",   color: "text-emerald-400", bg: "bg-emerald-500/10" },
-    { href: "/admin/media",     icon: ImageIcon,      label: "媒体",   color: "text-amber-400",   bg: "bg-amber-500/10" },
-    { href: "/admin/backup",    icon: HardDrive,      label: "备份",   color: "text-rose-400",    bg: "bg-rose-500/10" },
+    { href: "/admin/media",      icon: ImageIcon,      label: "媒体",   color: "text-amber-400",   bg: "bg-amber-500/10" },
+    { href: "/admin/analytics",  icon: BarChart3,      label: "分析",   color: "text-cyan-400",    bg: "bg-cyan-500/10" },
+    { href: "/admin/backup",     icon: HardDrive,      label: "备份",   color: "text-rose-400",    bg: "bg-rose-500/10" },
   ];
 
   return (

@@ -87,3 +87,13 @@ export const pgReactions = pgTable("reactions", {
   ipHash: text("ip_hash").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/* ── 访客记录表 ────────────────────────────── */
+export const pgVisits = pgTable("visits", {
+  id: serial("id").primaryKey(),
+  path: text("path").notNull(),
+  country: text("country").notNull().default("XX"),
+  refererDomain: text("referer_domain").notNull().default(""),
+  deviceType: text("device_type").notNull().default("desktop"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

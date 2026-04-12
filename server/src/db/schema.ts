@@ -88,3 +88,15 @@ export const reactions = sqliteTable("reactions", {
     .notNull()
     .default(sql`(datetime('now'))`),
 });
+
+/* ── 访客记录表 ────────────────────────────── */
+export const visits = sqliteTable("visits", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  path: text("path").notNull(),
+  country: text("country").notNull().default("XX"),
+  refererDomain: text("referer_domain").notNull().default(""),
+  deviceType: text("device_type").notNull().default("desktop"), // desktop, mobile, tablet, bot
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
