@@ -488,9 +488,6 @@ export function AdminEditor() {
           <button onClick={() => setZenMode(!zenMode)} title="专注模式" className="h-[30px] px-[8px] rounded-md text-muted-foreground/40 hover:text-foreground hover:bg-accent/20 transition-colors">
             {zenMode ? <Minimize2 className="h-[13px] w-[13px]" /> : <Maximize2 className="h-[13px] w-[13px]" />}
           </button>
-          <button onClick={() => setShowPreview(!showPreview)} title={showPreview ? "关闭预览面板" : "打开预览面板"} className={`h-[30px] px-[8px] rounded-md inline-flex items-center gap-[4px] text-[12px] transition-colors ${showPreview ? "text-foreground bg-accent/20" : "text-muted-foreground/40 hover:text-foreground hover:bg-accent/15"}`}>
-            {showPreview ? <PanelRightClose className="h-[13px] w-[13px]" /> : <PanelRight className="h-[13px] w-[13px]" />}
-          </button>
           <label className="flex items-center gap-[5px] text-[12px] text-muted-foreground/50 cursor-pointer select-none">
             <input type="checkbox" checked={form.published} onChange={(e) => updateField("published", e.target.checked)} className="rounded accent-foreground" />
             发布
@@ -650,13 +647,22 @@ export function AdminEditor() {
                 );
               })}
             </div>
-            <div className="flex items-center gap-[4px]">
+            <div className="flex items-center gap-[2px]">
               <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleImageUpload(e.target.files[0]); }} />
               <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
                 className="inline-flex items-center gap-[3px] h-[24px] px-[6px] rounded-[4px] text-[10px] text-muted-foreground/40 hover:text-foreground hover:bg-accent/20 transition-colors disabled:opacity-50"
               >
                 {uploading ? <Upload className="h-[10px] w-[10px] animate-pulse" /> : <Image className="h-[10px] w-[10px]" />}
                 {uploading ? "上传中" : "插图"}
+              </button>
+              <div className="w-[1px] h-[14px] bg-border/15 mx-[3px]" />
+              <button
+                onClick={() => setShowPreview(!showPreview)}
+                title={showPreview ? "关闭预览" : "打开预览"}
+                className={`inline-flex items-center gap-[3px] h-[24px] px-[6px] rounded-[4px] text-[10px] transition-colors ${showPreview ? "text-cyan-400/70 bg-cyan-500/8 hover:bg-cyan-500/12" : "text-muted-foreground/40 hover:text-foreground hover:bg-accent/20"}`}
+              >
+                {showPreview ? <Eye className="h-[10px] w-[10px]" /> : <EyeOff className="h-[10px] w-[10px]" />}
+                {showPreview ? "预览" : "预览"}
               </button>
             </div>
           </div>
