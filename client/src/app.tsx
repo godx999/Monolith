@@ -50,10 +50,11 @@ export function App() {
   const [location] = useLocation();
 
   // 路由判断逻辑
+  const isAdminRoot = matchesPathPrefix(location, "/admin");
   const isEditorPage = matchesPathPrefix(location, "/admin/editor");
   const isLoginPage = matchesPathPrefix(location, "/admin/login");
-  const isAdminArea = location.startsWith("/admin") && !isEditorPage && !isLoginPage;
-  const isPublicPage = !location.startsWith("/admin");
+  const isAdminArea = isAdminRoot && !isEditorPage && !isLoginPage;
+  const isPublicPage = !isAdminRoot;
 
   // 注入自定义 header/footer 代码（仅执行一次）
   useEffect(() => {

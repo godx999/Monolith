@@ -4,18 +4,51 @@
  * 利用浏览器原生的 DOMParser 实现，零依赖。
  */
 
+import DOMPurify from "dompurify";
+
+const IMPORT_ALLOWED_TAGS = [
+    "a", "article", "b", "blockquote", "br", "code", "del", "div", "em",
+    "figcaption", "figure", "h1", "h2", "h3", "h4", "h5", "h6", "hr",
+    "i", "iframe", "img", "li", "main", "mark", "ol", "p", "pre",
+    "s", "section", "span", "strike", "strong", "table", "tbody", "td",
+    "tfoot", "th", "thead", "tr", "ul",
+  ];
+
+const IMPORT_ALLOWED_ATTR = [
+    "allow",
+    "allowfullscreen",
+    "alt",
+    "class",
+    "height",
+    "href",
+    "loading",
+    "referrerpolicy",
+    "src",
+    "title",
+    "width",
+  ];
+
+const IMPORT_SANITIZE_CONFIG = {
+  ALLOWED_TAGS: [...IMPORT_ALLOWED_TAGS],
+  ALLOWED_ATTR: [...IMPORT_ALLOWED_ATTR],
+  ALLOW_DATA_ATTR: false,
+  ALLOW_UNKNOWN_PROTOCOLS: false,
+};
+
+function convertChildren(nodes: Iterable<Node>): string {
+  return Array.from(nodes).map(convertNode).join("");
+}
+
 export function htmlToMarkdown(html: string): string {
   if (!html || !html.trim()) return "";
 
+  const sanitizedHtml = DOMPurify.sanitize(html, IMPORT_SANITIZE_CONFIG);
   const parser = new DOMParser();
-  const doc = parser.parseFromString(
-    `<div id="root">${html}</div>`,
-    "text/html"
-  );
-  const root = doc.getElementById("root");
-  if (!root) return html;
+  const doc = parser.parseFromString(sanitizedHtml, "text/html");
+  const root = doc.body;
+  if (!root) return sanitizedHtml;
 
-  return convertNode(root).replace(/\n{3,}/g, "\n\n").trim();
+  return convertChildren(root.childNodes).replace(/\n{3,}/g, "\n\n").trim();
 }
 
 const TRUSTED_IFRAME_HOSTS = new Set([
@@ -84,7 +117,6 @@ function convertNode(node: Node): string {
     case "section":
     case "main":
     case "span":
-    case "root":
       return children;
 
     // 段落
