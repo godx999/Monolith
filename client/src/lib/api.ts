@@ -47,6 +47,7 @@ export type PostMeta = {
   title: string;
   excerpt: string | null;
   coverColor: string | null;
+  coverImage: string | null;
   createdAt: string;
   tags: string[];
   pinned: boolean;
@@ -110,6 +111,23 @@ export async function toggleReaction(slug: string, type: string): Promise<{ acti
     body: JSON.stringify({ type }),
   });
   return res.json();
+}
+
+/* ── 独立页面导航 ────────────────────────────── */
+export type NavPage = {
+  slug: string;
+  title: string;
+  showInNav: boolean;
+  sortOrder: number;
+};
+
+export async function fetchNavPages(): Promise<NavPage[]> {
+  try {
+    const all = await fetchJsonWithCache<NavPage[]>("/api/pages", 60_000);
+    return all.filter((p) => p.showInNav);
+  } catch {
+    return [];
+  }
 }
 
 /* ── 认证 ──────────────────────────────────── */
@@ -290,13 +308,13 @@ export type CommentData = {
   id: number;
   postId: number;
   authorName: string;
-  authorEmail: string;
   content: string;
   approved: boolean;
   createdAt: string;
 };
 
 export type AdminComment = CommentData & {
+  authorEmail: string;
   postSlug: string;
   postTitle: string;
 };
