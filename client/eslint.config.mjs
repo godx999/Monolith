@@ -10,7 +10,8 @@ export default [
       ...security.configs.recommended.rules,
       "no-eval": "error",
       "no-implied-eval": "error",
+      "security/detect-object-injection": "off",
     },
   },
-  { ignores: ["dist/", "node_modules/", "*.config.*"] },
+  { ignores: ["dist/", "node_modules/", ".wrangler/", "*.config.*"] },
 ];

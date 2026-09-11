@@ -32,7 +32,12 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
+        navigateFallbackDenylist: [/^\/sitemap\.xml$/i, /^\/robots\.txt$/i, /^\/rss\.xml$/i],
         runtimeCaching: [
+          {
+            urlPattern: /\/(?:sitemap\.xml|robots\.txt|rss\.xml)$/i,
+            handler: "NetworkOnly",
+          },
           {
             urlPattern: /\/cdn\/.*/i,
             handler: "CacheFirst",
@@ -43,7 +48,7 @@ export default defineConfig({
             }
           },
           {
-            urlPattern: /\/api\//i,
+            urlPattern: /\/api\/(?!auth\/|admin\/).*/i,
             handler: "NetworkFirst",
             options: {
               cacheName: "monolith-api",
@@ -66,9 +71,12 @@ export default defineConfig({
       "/api": "http://localhost:8787",
       "/cdn": "http://localhost:8787",
       "/rss.xml": "http://localhost:8787",
+      "/sitemap.xml": "http://localhost:8787",
+      "/robots.txt": "http://localhost:8787",
     },
   },
   build: {
     outDir: "dist",
+    sourcemap: false,
   },
 });

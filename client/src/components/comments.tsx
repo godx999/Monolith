@@ -2,39 +2,23 @@ import { useEffect, useState, useCallback } from "react";
 import { Separator } from "@/components/ui/separator";
 import { fetchComments, submitComment, type CommentData } from "@/lib/api";
 import { MessageCircle, Send, User, ChevronDown, ChevronUp } from "lucide-react";
+import { useSiteSettings } from "@/lib/site-settings";
+import { formatSiteDate } from "@/lib/date-format";
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("zh-CN", {
-    year: "numeric", month: "long", day: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
-
-/** 通过邮箱生成 Gravatar 头像 URL */
-function gravatarUrl(email: string, size = 40): string {
-  // 简单 hash 用于无邮箱时的默认颜色
-  if (!email) return `https://api.dicebear.com/7.x/initials/svg?seed=U&size=${size}`;
-  const trimmed = email.trim().toLowerCase();
-  return `https://gravatar.com/avatar/${simpleHash(trimmed)}?s=${size}&d=identicon`;
-}
-
-function simpleHash(str: string): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(16).padStart(32, "0");
+/** 通过昵称生成 DiceBear 头像 URL（不再传输邮箱） */
+function avatarUrl(name: string, size = 40): string {
+  const seed = encodeURIComponent(name.trim() || "U");
+  return `https://api.dicebear.com/7.x/initials/svg?seed=${seed}&size=${size}`;
 }
 
 /* ── 单条评论 ──────────────────────────── */
 function CommentItem({ comment }: { comment: CommentData }) {
+  const { dateSettings } = useSiteSettings();
   return (
     <div className="group flex gap-[12px] py-[16px]">
       <div className="shrink-0">
         <img
-          src={gravatarUrl(comment.authorEmail)}
+          src={avatarUrl(comment.authorName)}
           alt={comment.authorName}
           className="h-[36px] w-[36px] rounded-full bg-card/30 ring-1 ring-border/20"
           loading="lazy"
@@ -43,7 +27,7 @@ function CommentItem({ comment }: { comment: CommentData }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-[8px] mb-[4px]">
           <span className="text-[14px] font-medium text-foreground">{comment.authorName}</span>
-          <span className="text-[12px] text-muted-foreground/50">{formatDate(comment.createdAt)}</span>
+          <span className="text-[12px] text-muted-foreground/50">{formatSiteDate(comment.createdAt, dateSettings)}</span>
         </div>
         <p className="text-[14px] leading-[1.7] text-muted-foreground/80 whitespace-pre-wrap break-words">
           {comment.content}
@@ -86,7 +70,7 @@ function CommentForm({ slug, onSubmitted }: { slug: string; onSubmitted: () => v
     }
   };
 
-  const inputClass = "w-full rounded-md border border-border/40 bg-card/20 px-[12px] py-[8px] text-[14px] text-foreground placeholder:text-muted-foreground/40 outline-none transition-all duration-200 focus:border-blue-500/40 focus:ring-1 focus:ring-blue-500/20";
+  const inputClass = "w-full rounded-md border border-border/40 bg-card/20 px-[12px] py-[8px] text-[14px] text-foreground placeholder:text-muted-foreground/40 outline-none transition-all duration-200 focus:border-foreground/35 focus:ring-1 focus:ring-foreground/12";
 
   return (
     <form onSubmit={handleSubmit} className="space-y-[12px]">
@@ -146,7 +130,7 @@ function CommentForm({ slug, onSubmitted }: { slug: string; onSubmitted: () => v
       {message && (
         <div className={`rounded-md px-[12px] py-[8px] text-[13px] ${
           message.type === "success"
-            ? "bg-green-500/10 text-green-400 border border-green-500/20"
+            ? "border border-foreground/12 bg-foreground/[0.06] text-foreground/82"
             : "bg-red-500/10 text-red-400 border border-red-500/20"
         }`}>
           {message.text}
@@ -156,7 +140,7 @@ function CommentForm({ slug, onSubmitted }: { slug: string; onSubmitted: () => v
       <button
         type="submit"
         disabled={submitting || !authorName.trim() || !content.trim()}
-        className="inline-flex items-center gap-[6px] rounded-md bg-blue-600/80 px-[16px] py-[8px] text-[13px] font-medium text-white transition-all duration-200 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
+        className="inline-flex min-h-[44px] items-center gap-[6px] rounded-md bg-foreground px-[16px] py-[8px] text-[13px] font-medium text-background transition-all duration-200 hover:-translate-y-[2px] hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[36px]"
       >
         <Send className="h-[14px] w-[14px]" />
         {submitting ? "提交中..." : "发表评论"}
@@ -185,11 +169,12 @@ export function CommentsSection({ slug }: { slug: string }) {
 
   return (
     <section className="mt-[40px] animate-fade-in delay-5">
-      <div className="rounded-xl border border-border/40 bg-card/10 overflow-hidden transition-all duration-300">
+      <div className="overflow-hidden rounded-md border border-border/32 bg-card/10 transition-all duration-300">
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full flex items-center justify-between p-[16px] md:px-[20px] bg-transparent hover:bg-card/30 transition-colors"
+          className="flex min-h-[56px] w-full items-center justify-between bg-transparent p-[16px] text-left transition-colors hover:bg-card/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring md:px-[20px]"
           title={isOpen ? "收起评论区" : "展开评论区"}
+          aria-expanded={isOpen}
         >
           <div className="flex items-center gap-[8px]">
             <MessageCircle className="h-[18px] w-[18px] text-muted-foreground/60" />

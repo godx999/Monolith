@@ -47,6 +47,9 @@ export type PostMeta = {
   title: string;
   excerpt: string | null;
   coverColor: string | null;
+  coverImage: string | null;
+  cardWidth: number;
+  cardHeight: number;
   createdAt: string;
   tags: string[];
   pinned: boolean;
@@ -64,6 +67,45 @@ export type Post = PostMeta & {
   seriesOrder: number;
 };
 
+export type FriendLinkStatus = "pending" | "approved" | "rejected";
+export type FriendLinkSource = "manual" | "submission" | "imported";
+
+export type FriendLink = {
+  id: number;
+  name: string;
+  url: string;
+  description: string;
+  avatarUrl: string;
+  ownerName?: string;
+  ownerEmail?: string;
+  status?: FriendLinkStatus;
+  source?: FriendLinkSource;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+  reviewedAt?: string | null;
+};
+
+export type FriendLinkInput = {
+  name: string;
+  url: string;
+  description?: string;
+  avatarUrl?: string;
+  ownerName?: string;
+  ownerEmail?: string;
+  status?: FriendLinkStatus;
+  sortOrder?: number;
+};
+
+async function readError(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = await res.json() as { error?: string };
+    return body.error || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 /* ── 公开 API ──────────────────────────────── */
 export async function fetchPosts(): Promise<PostMeta[]> {
   return fetchJsonWithCache<PostMeta[]>("/api/posts", 60_000);
@@ -76,6 +118,20 @@ export async function fetchPost(slug: string): Promise<Post> {
 export async function fetchTags(): Promise<{ id: number; name: string }[]> {
   const res = await fetch(`${API_BASE}/api/tags`);
   if (!res.ok) throw new Error("获取标签失败");
+  return res.json();
+}
+
+export async function fetchFriends(): Promise<FriendLink[]> {
+  return fetchJsonWithCache<FriendLink[]>("/api/friends", 60_000);
+}
+
+export async function applyFriendLink(data: FriendLinkInput): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/api/friends/apply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(await readError(res, "提交失败"));
   return res.json();
 }
 
@@ -112,6 +168,23 @@ export async function toggleReaction(slug: string, type: string): Promise<{ acti
   return res.json();
 }
 
+/* ── 独立页面导航 ────────────────────────────── */
+export type NavPage = {
+  slug: string;
+  title: string;
+  showInNav: boolean;
+  sortOrder: number;
+};
+
+export async function fetchNavPages(): Promise<NavPage[]> {
+  try {
+    const all = await fetchJsonWithCache<NavPage[]>("/api/pages", 60_000);
+    return all.filter((p) => p.showInNav);
+  } catch {
+    return [];
+  }
+}
+
 /* ── 认证 ──────────────────────────────────── */
 export function getToken(): string | null {
   return localStorage.getItem("monolith_token");
@@ -133,6 +206,7 @@ function authHeaders(): HeadersInit {
 export async function login(password: string): Promise<string> {
   const res = await fetch(`${API_BASE}/api/auth/login`, {
     method: "POST",
+    cache: "no-store",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ password }),
   });
@@ -145,6 +219,7 @@ export async function login(password: string): Promise<string> {
 export async function checkAuth(): Promise<boolean> {
   try {
     const res = await fetch(`${API_BASE}/api/auth/me`, {
+      cache: "no-store",
       headers: authHeaders(),
     });
     const data = await res.json();
@@ -169,6 +244,9 @@ export async function createPost(data: {
   content: string;
   excerpt?: string;
   coverColor?: string;
+  coverImage?: string;
+  cardWidth?: number;
+  cardHeight?: number;
   published?: boolean;
   tags?: string[];
   pinned?: boolean;
@@ -269,12 +347,142 @@ export async function fetchViewStats(): Promise<ViewStats> {
   return res.json();
 }
 
+export type AnalyticsTone = "good" | "warning" | "danger" | "neutral";
+
+export type AnalyticsInsight = {
+  id: string;
+  tone: AnalyticsTone;
+  title: string;
+  description: string;
+  action: string;
+  metric?: string;
+  path?: string;
+};
+
+export type AnalyticsKpi = {
+  key: string;
+  label: string;
+  value: number;
+  unit?: string;
+  change: number;
+  changePercent: number | null;
+  interpretation: string;
+};
+
+export type AnalyticsTrendPoint = {
+  date: string;
+  count: number;
+  previousCount: number;
+  change: number;
+  isPeak: boolean;
+  isAnomaly: boolean;
+};
+
+export type AnalyticsShareItem = {
+  name: string;
+  count: number;
+  share: number;
+  meaning: string;
+};
+
+export type ContentSuggestion = {
+  id: string;
+  priority: "high" | "medium" | "low";
+  title: string;
+  reason: string;
+  action: string;
+  path?: string;
+  metric?: string;
+};
+
+export type AnalyticsPageFilter = {
+  key: "all" | "posts" | "pages" | "search" | "other";
+  label: string;
+  count: number;
+  share: number;
+  description: string;
+};
+
+export type ContentLifecycleItem = {
+  path: string;
+  title: string;
+  count: number;
+  ageDays: number | null;
+  change?: number;
+  stage: "new" | "growing" | "evergreen" | "declining";
+  action: string;
+};
+
+export type SearchAnalytics = {
+  status: "tracked" | "not_configured" | "empty";
+  totalSearches: number;
+  zeroResultRate: number;
+  topQueries: { query: string; count: number; avgResults: number }[];
+  zeroResultQueries: { query: string; count: number }[];
+  suggestions: ContentSuggestion[];
+};
+
+export type OperationalReport = {
+  title: string;
+  summary: string;
+  highlights: string[];
+  nextActions: string[];
+  markdown: string;
+};
+
+export type AnalyticsDerived = {
+  period: {
+    days: number;
+    total: number;
+    previousTotal: number;
+    change: number;
+    changePercent: number | null;
+    average: number;
+    previousAverage: number;
+  };
+  kpis: AnalyticsKpi[];
+  trend: AnalyticsTrendPoint[];
+  anomalies: AnalyticsInsight[];
+  topRisingPages: { path: string; count: number; previousCount: number; change: number; changePercent: number | null }[];
+  concentration: {
+    topPageShare: number;
+    topRefererShare: number;
+    topDeviceShare: number;
+    label: "healthy" | "watch" | "concentrated";
+    explanation: string;
+  };
+  shares: {
+    devices: AnalyticsShareItem[];
+    referers: AnalyticsShareItem[];
+    countries: AnalyticsShareItem[];
+  };
+  quality: {
+    score: number;
+    label: string;
+    avgDuration?: number;
+    bounceRate?: number;
+    pagesPerVisitor?: number;
+  };
+  pageFilters: AnalyticsPageFilter[];
+  contentLifecycle: {
+    newPosts: ContentLifecycleItem[];
+    growing: ContentLifecycleItem[];
+    evergreen: ContentLifecycleItem[];
+    declining: ContentLifecycleItem[];
+  };
+  search: SearchAnalytics;
+  report: OperationalReport;
+  insights: AnalyticsInsight[];
+  contentSuggestions: ContentSuggestion[];
+};
+
 export type AnalyticsData = {
   visitsByDay: { date: string; count: number }[];
   topCountries: { country: string; count: number }[];
   topReferers: { referer: string; count: number }[];
   deviceBreakdown: { device: string; count: number }[];
   topPages: { path: string; count: number }[];
+  derived: AnalyticsDerived;
 };
 
 export async function fetchAnalytics(days = 7): Promise<AnalyticsData> {
@@ -285,20 +493,81 @@ export async function fetchAnalytics(days = 7): Promise<AnalyticsData> {
   return res.json();
 }
 
+/* ── AE 增强分析（CF 专属，仅在 D1 后端可用） ────────── */
+export type AEAnalyticsData = {
+  visitsByDay: { date: string; count: number; uv: number }[];
+  topCountries: { country: string; count: number }[];
+  topReferers: { referer: string; count: number }[];
+  deviceBreakdown: { device: string; count: number }[];
+  browserBreakdown: { browser: string; count: number }[];
+  osBreakdown: { os: string; count: number }[];
+  topPages: { path: string; count: number }[];
+  topScreens: { screen: string; count: number }[];
+  topLanguages: { language: string; count: number }[];
+  totalVisits: number;
+  uniqueVisitors: number;
+  avgDuration: number;
+  hourlyHeatmap: { dow: number; hour: number; count: number }[];
+  durationBuckets: { bucket: string; count: number }[];
+  entryPages: { path: string; count: number }[];
+  exitPages: { path: string; count: number }[];
+  visitorTypes: { type: "new" | "returning"; count: number }[];
+  bounceRate: number;
+  pagesPerVisitor: number;
+  topReferersFull: { referer: string; count: number }[];
+  derived: AnalyticsDerived;
+};
+
+export type AEAnalyticsError = {
+  /** 501 = 非 CF 部署；503 = 缺 token；502 = AE SQL 失败 */
+  status: number;
+  message: string;
+};
+
+export async function fetchAEAnalytics(days = 7): Promise<AEAnalyticsData> {
+  const res = await fetch(`${API_BASE}/api/admin/analytics/ae?days=${days}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    let message = `AE 分析数据加载失败 (${res.status})`;
+    try {
+      const body = await res.json() as { error?: string };
+      if (body.error) message = body.error;
+    } catch { /* ignore */ }
+    const err: AEAnalyticsError = { status: res.status, message };
+    throw err;
+  }
+  return res.json();
+}
+
 /* ── 评论 ──────────────────────────────────── */
 export type CommentData = {
   id: number;
   postId: number;
   authorName: string;
-  authorEmail: string;
   content: string;
   approved: boolean;
   createdAt: string;
 };
 
 export type AdminComment = CommentData & {
+  authorEmail: string;
   postSlug: string;
   postTitle: string;
+};
+
+export type GuestbookMessage = {
+  id: number;
+  authorName: string;
+  authorEmail?: string;
+  content: string;
+  approved: boolean;
+  createdAt: string;
+};
+
+export type GuestbookPage = {
+  items: GuestbookMessage[];
+  nextCursor: number | null;
 };
 
 export async function fetchComments(slug: string): Promise<CommentData[]> {
@@ -321,11 +590,100 @@ export async function submitComment(slug: string, data: {
   return res.json();
 }
 
+export async function fetchGuestbookMessages(before?: number): Promise<GuestbookPage> {
+  const query = before ? `?before=${before}` : "";
+  return fetchJsonWithCache<GuestbookPage>(`/api/guestbook${query}`, 60_000);
+}
+
+export async function submitGuestbookMessage(data: {
+  authorName: string;
+  authorEmail?: string;
+  content: string;
+  _hp?: string;
+}): Promise<{ success: boolean; message?: string; error?: string }> {
+  const res = await fetch(`${API_BASE}/api/guestbook`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
 export async function fetchAdminComments(): Promise<AdminComment[]> {
   const res = await fetch(`${API_BASE}/api/admin/comments`, {
     headers: authHeaders(),
   });
   if (!res.ok) throw new Error("获取评论失败");
+  return res.json();
+}
+
+export async function fetchAdminGuestbookMessages(before?: number): Promise<GuestbookPage> {
+  const query = before ? `?before=${before}` : "";
+  const res = await fetch(`${API_BASE}/api/admin/guestbook${query}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("获取留言失败");
+  return res.json();
+}
+
+export async function fetchAdminFriends(): Promise<FriendLink[]> {
+  const res = await fetch(`${API_BASE}/api/admin/friends`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(await readError(res, "获取友链失败"));
+  return res.json();
+}
+
+export async function createAdminFriend(data: FriendLinkInput): Promise<FriendLink> {
+  const res = await fetch(`${API_BASE}/api/admin/friends`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(await readError(res, "创建友链失败"));
+  return res.json();
+}
+
+export async function updateAdminFriend(id: number, data: Partial<FriendLinkInput>): Promise<FriendLink> {
+  const res = await fetch(`${API_BASE}/api/admin/friends/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(await readError(res, "更新友链失败"));
+  return res.json();
+}
+
+export async function approveFriend(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/admin/friends/${id}/approve`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(await readError(res, "审核失败"));
+}
+
+export async function rejectFriend(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/admin/friends/${id}/reject`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(await readError(res, "拒绝失败"));
+}
+
+export async function deleteFriend(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/admin/friends/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(await readError(res, "删除失败"));
+}
+
+export async function importSocialFriendLinks(): Promise<{ imported: number }> {
+  const res = await fetch(`${API_BASE}/api/admin/friends/import-social-links`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(await readError(res, "导入失败"));
   return res.json();
 }
 
@@ -343,6 +701,22 @@ export async function deleteComment(id: number): Promise<void> {
     headers: authHeaders(),
   });
   if (!res.ok) throw new Error("删除失败");
+}
+
+export async function approveGuestbookMessage(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/admin/guestbook/${id}/approve`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(await readError(res, "审核失败"));
+}
+
+export async function deleteGuestbookMessage(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/admin/guestbook/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(await readError(res, "删除失败"));
 }
 
 /* ── 媒体管理 ──────────────────────────────── */

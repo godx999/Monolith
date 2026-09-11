@@ -15,6 +15,7 @@ type SearchResult = {
 };
 
 const API_BASE = "";
+const SEARCH_SUGGESTIONS = ["边缘计算", "设计系统", "React", "Cloudflare"];
 
 function findSelectedResult(results: SearchResult[], selectedIndex: number) {
   if (selectedIndex < 0) return undefined;
@@ -155,7 +156,7 @@ export function SearchOverlay() {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-start justify-center pt-[10vh] animate-fade-in"
+      className="fixed inset-0 z-[100] flex items-start justify-center px-[12px] pt-[8vh] animate-fade-in sm:px-0 sm:pt-[10vh]"
       onClick={() => setOpen(false)}
     >
       {/* 背景遮罩 */}
@@ -163,11 +164,14 @@ export function SearchOverlay() {
 
       {/* 搜索面板 */}
       <div
-        className="relative w-full max-w-[580px] mx-[16px] rounded-[16px] bg-card/95 backdrop-blur-xl border border-border/50 shadow-2xl overflow-hidden animate-slide-in-up"
+        role="dialog"
+        aria-modal="true"
+        aria-label="搜索文章"
+        className="relative w-full max-w-[580px] overflow-hidden rounded-md border border-border/45 bg-card/95 shadow-2xl backdrop-blur-xl animate-slide-in-up"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 搜索输入框 */}
-        <div className="flex items-center gap-[12px] px-[20px] py-[16px] border-b border-border/30">
+        <div className="flex items-center gap-[12px] border-b border-border/30 px-[14px] py-[12px] sm:px-[20px] sm:py-[14px]">
           <Search className="h-[18px] w-[18px] text-muted-foreground shrink-0" />
           <input
             ref={inputRef}
@@ -176,24 +180,40 @@ export function SearchOverlay() {
             value={query}
             onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted-foreground/60 outline-none"
+            className="min-h-[44px] flex-1 bg-transparent text-[16px] text-foreground outline-none placeholder:text-muted-foreground/60 sm:text-[15px]"
           />
           {loading && <Loader2 className="h-[16px] w-[16px] text-muted-foreground animate-spin" />}
           <button
             onClick={() => setOpen(false)}
-            className="h-[28px] w-[28px] flex items-center justify-center rounded-[6px] bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            className="flex h-[44px] w-[44px] items-center justify-center rounded-md bg-muted/45 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:h-[36px] sm:w-[36px]"
+            aria-label="关闭搜索"
           >
             <X className="h-[14px] w-[14px]" />
           </button>
         </div>
 
         {/* 搜索结果 */}
-        <div className="max-h-[400px] overflow-y-auto">
+        <div className="max-h-[min(62vh,440px)] overflow-y-auto">
           {query.trim() && !loading && results.length === 0 && (
             <div className="flex flex-col items-center justify-center py-[48px] text-muted-foreground">
               <Search className="h-[32px] w-[32px] mb-[12px] opacity-40" />
-              <p className="text-[14px]">未找到相关文章</p>
-              <p className="text-[12px] mt-[4px] opacity-60">试试其他关键词</p>
+              <p className="text-[14px] text-foreground/82">未找到相关文章</p>
+              <p className="mt-[4px] text-[12px] opacity-65">换一个主题词，或从常见方向继续探索。</p>
+              <div className="mt-[14px] flex flex-wrap justify-center gap-[8px] px-[16px]">
+                {SEARCH_SUGGESTIONS.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => {
+                      handleInputChange(item);
+                      inputRef.current?.focus();
+                    }}
+                    className="inline-flex min-h-[36px] items-center rounded-md border border-border/22 bg-background/28 px-[10px] text-[12px] text-muted-foreground/72 transition-colors hover:bg-accent/35 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -202,13 +222,13 @@ export function SearchOverlay() {
               key={result.slug}
               href={`/posts/${result.slug}`}
               onClick={() => setOpen(false)}
-              className={`flex items-start gap-[12px] px-[20px] py-[14px] transition-colors duration-150 cursor-pointer ${
+              className={`flex min-h-[72px] cursor-pointer items-start gap-[12px] px-[14px] py-[14px] transition-colors duration-150 sm:px-[20px] ${
                 index === selectedIndex
                   ? "bg-accent/60"
                   : "hover:bg-accent/30"
               }`}
             >
-              <div className={`mt-[2px] h-[36px] w-[36px] shrink-0 rounded-[8px] bg-gradient-to-br ${result.coverColor || "from-gray-500/20 to-gray-600/20"} flex items-center justify-center`}>
+              <div className={`mt-[2px] flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-md bg-gradient-to-br ${result.coverColor || "from-gray-500/20 to-gray-600/20"}`}>
                 <FileText className="h-[16px] w-[16px] text-muted-foreground/80" />
               </div>
               <div className="flex-1 min-w-0">
@@ -238,7 +258,7 @@ export function SearchOverlay() {
         </div>
 
         {/* 底部提示 */}
-        <div className="flex items-center justify-between px-[20px] py-[10px] border-t border-border/20 text-[11px] text-muted-foreground/50">
+        <div className="hidden items-center justify-between border-t border-border/20 px-[20px] py-[10px] text-[11px] text-muted-foreground/50 sm:flex">
           <div className="flex items-center gap-[12px]">
             <span className="flex items-center gap-[4px]">
               <kbd className="px-[4px] py-[1px] rounded bg-muted/40 font-mono text-[10px]">↑↓</kbd>
@@ -253,6 +273,9 @@ export function SearchOverlay() {
               关闭
             </span>
           </div>
+          {query.trim() && (
+            <span>{loading ? "搜索中" : `${results.length} 条结果`}</span>
+          )}
         </div>
       </div>
     </div>

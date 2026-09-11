@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, primaryKey, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, primaryKey, uniqueIndex, index } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 
 /* ── 文章表 ────────────────────────────────── */
@@ -9,6 +9,9 @@ export const posts = sqliteTable("posts", {
   content: text("content").notNull().default(""),
   excerpt: text("excerpt").default(""),
   coverColor: text("cover_color").default("from-gray-500/20 to-gray-600/20"),
+  coverImage: text("cover_image").default(""),
+  cardWidth: integer("card_width").notNull().default(100),
+  cardHeight: integer("card_height").notNull().default(220),
   published: integer("published", { mode: "boolean" }).notNull().default(true),
   listed: integer("listed", { mode: "boolean" }).notNull().default(true),
   createdAt: text("created_at")
@@ -65,19 +68,71 @@ export const pages = sqliteTable("pages", {
 });
 
 /* ── 评论表 ──────────────────────────────── */
-export const comments = sqliteTable("comments", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  postId: integer("post_id")
-    .notNull()
-    .references(() => posts.id, { onDelete: "cascade" }),
-  authorName: text("author_name").notNull(),
-  authorEmail: text("author_email").notNull().default(""),
-  content: text("content").notNull(),
-  approved: integer("approved", { mode: "boolean" }).notNull().default(false),
-  createdAt: text("created_at")
-    .notNull()
-    .default(sql`(datetime('now'))`),
-});
+export const comments = sqliteTable(
+  "comments",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    postId: integer("post_id")
+      .notNull()
+      .references(() => posts.id, { onDelete: "cascade" }),
+    authorName: text("author_name").notNull(),
+    authorEmail: text("author_email").notNull().default(""),
+    content: text("content").notNull(),
+    approved: integer("approved", { mode: "boolean" }).notNull().default(false),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (table) => ({
+    postIdIdx: index("comments_post_id_idx").on(table.postId),
+  })
+);
+
+/* ── 留言板表 ──────────────────────────────── */
+export const guestbookMessages = sqliteTable(
+  "guestbook_messages",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    authorName: text("author_name").notNull(),
+    authorEmail: text("author_email").notNull().default(""),
+    content: text("content").notNull(),
+    approved: integer("approved", { mode: "boolean" }).notNull().default(false),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (table) => ({
+    approvedIdx: index("guestbook_messages_approved_idx").on(table.approved, table.id),
+  })
+);
+
+/* ── 友链表 ──────────────────────────────── */
+export const friendLinks = sqliteTable(
+  "friend_links",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    name: text("name").notNull(),
+    url: text("url").notNull(),
+    description: text("description").notNull().default(""),
+    avatarUrl: text("avatar_url").notNull().default(""),
+    ownerName: text("owner_name").notNull().default(""),
+    ownerEmail: text("owner_email").notNull().default(""),
+    status: text("status").notNull().default("pending"),
+    source: text("source").notNull().default("manual"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+    reviewedAt: text("reviewed_at"),
+  },
+  (table) => ({
+    urlIdx: uniqueIndex("friend_links_url_idx").on(table.url),
+    statusIdx: index("friend_links_status_idx").on(table.status),
+  })
+);
 
 /* ── 表情反应表 ────────────────────────────── */
 export const reactions = sqliteTable("reactions", {
@@ -95,16 +150,22 @@ export const reactions = sqliteTable("reactions", {
 }));
 
 /* ── 访客记录表 ────────────────────────────── */
-export const visits = sqliteTable("visits", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  path: text("path").notNull(),
-  country: text("country").notNull().default("XX"),
-  refererDomain: text("referer_domain").notNull().default(""),
-  deviceType: text("device_type").notNull().default("desktop"), // desktop, mobile, tablet, bot
-  createdAt: text("created_at")
-    .notNull()
-    .default(sql`(datetime('now'))`),
-});
+export const visits = sqliteTable(
+  "visits",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    path: text("path").notNull(),
+    country: text("country").notNull().default("XX"),
+    refererDomain: text("referer_domain").notNull().default(""),
+    deviceType: text("device_type").notNull().default("desktop"), // desktop, mobile, tablet, bot
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (table) => ({
+    pathIdx: index("visits_path_idx").on(table.path),
+  })
+);
 
 /* ── 文章版本历史表 ────────────────────────── */
 export const postVersions = sqliteTable("post_versions", {

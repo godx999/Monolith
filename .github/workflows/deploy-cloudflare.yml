@@ -1,5 +1,11 @@
 name: Cloudflare Deploy
 
+# ⚠️ 状态：待测试（尚未端到端验证）
+# 已知问题：
+#   - Windows 用户反馈本地直跑脚本卡在「应用远程数据库迁移」（v2.3.0 已通过 shell:true 修复）
+#   - CI 触发的端到端流程仍待主人验收
+# 推荐部署姿势：本机 `npm run deploy:cloudflare`（详见 README）
+
 on:
   workflow_dispatch:
     inputs:
@@ -59,12 +65,12 @@ jobs:
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies

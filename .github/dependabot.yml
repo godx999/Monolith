@@ -1,23 +1,44 @@
-# Dependabot 依赖版本更新配置
+# Dependabot 依赖版本更新 & 安全告警配置
 # 文档：https://docs.github.com/code-security/dependabot/dependabot-version-updates
 
 version: 2
 updates:
+  # 根目录 npm 依赖（concurrently 等）
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 1
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      root-minor-patch-updates:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
   # 前端（client）npm 依赖
   - package-ecosystem: "npm"
     directory: "/client"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
       time: "09:00"
       timezone: "Asia/Shanghai"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
     labels:
       - "dependencies"
       - "frontend"
     commit-message:
       prefix: "chore(deps)"
-    # 将前端的只读小版本(minor)与修订版(patch)打包到一个 PR，避免满屏 PR 的困扰
     groups:
       client-minor-patch-updates:
         patterns:
@@ -25,7 +46,6 @@ updates:
         update-types:
           - "minor"
           - "patch"
-    # 忽略主要版本升级（重大升级由主人来指定时间手动处理）
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
@@ -34,17 +54,15 @@ updates:
   - package-ecosystem: "npm"
     directory: "/server"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
       time: "09:00"
       timezone: "Asia/Shanghai"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
     labels:
       - "dependencies"
       - "backend"
     commit-message:
       prefix: "chore(deps)"
-    # 后端同样开启打包合并更新策略
     groups:
       server-minor-patch-updates:
         patterns:
@@ -60,10 +78,10 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
       time: "09:00"
       timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 1
     labels:
       - "dependencies"
     commit-message:
